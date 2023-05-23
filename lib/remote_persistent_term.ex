@@ -4,6 +4,7 @@ defmodule RemotePersistentTerm do
 
   `use` this module to define a GenServer that will manage the state of your fetcher and periodically
   """
+  alias RemotePersistentTerm.Fetcher
   require Logger
 
   @opts_schema [
@@ -49,12 +50,23 @@ defmodule RemotePersistentTerm do
     ]
   ]
 
-  defstruct [:fetcher_mod, :fetcher_state, :refresh_interval]
+  @type t :: %__MODULE__{
+          fetcher_mod: module(),
+          fetcher_state: term(),
+          refresh_interval: pos_integer(),
+          current_version: String.t()
+        }
+  defstruct [:fetcher_mod, :fetcher_state, :refresh_interval, :current_version]
 
   @doc """
   Define a GenServer that will manage this specific persistent_term.
 
   Example:
+
+    This will define a GenServer that should be placed in your supervision tree.
+    The GenServer will check for a new version of `s3://my-bucket/my-object` every
+    12 hours and store it in a persistent_term.
+
     ```
     defmodule MyRemotePterm do
       use RemotePersistentTerm, 
@@ -68,8 +80,8 @@ defmodule RemotePersistentTerm do
   #{NimbleOptions.docs(@opts_schema)}
   """
   defmacro __using__(opts) do
-    fetcher = Keyword.fetch!(opts, :fetcher)
     valid_opts = NimbleOptions.validate!(opts, @opts_schema)
+    fetcher_mod = RemotePersistentTerm.fetcher_mod(valid_opts[:fetcher])
     name = __MODULE__ |> to_string |> String.split(".") |> List.last() |> Macro.underscore()
 
     quote do
@@ -81,24 +93,29 @@ defmodule RemotePersistentTerm do
 
       @impl GenServer
       def init(_) do
-        fetcher_mod = fetcher_mod(unquote(valid_opts[:fetcher]))
-        fetcher_opts = fetcher_mod.init(unquote(valid_opts[:fetcher_opts]))
+        fetcher_state = fetcher_mod.init(unquote(valid_opts[:fetcher_opts]))
 
         state = %__MODULE__{
-          fetcher_mod: fetcher_mod,
-          fetcher_opts: fetcher_opts,
+          fetcher_mod: unquote(fetcher_mod),
+          fetcher_state: fetcher_state,
           refresh_interval: unquote(valid_opts[:refresh_interval])
         }
 
         if unquote(valid_opts[:lazy_init?]) do
-          {:ok, state}
+          {:ok, state, {:continue, :fetch_term}}
         else
-          {:ok, update_term()}
+          state =
+            update_term(unquote(name), state.fetcher, state.fetcher_state, state.current_version)
+
+          {:ok, state}
         end
       end
 
       @impl GenServer
-      def handle_continue(_, state) do
+      def handle_continue(:fetch_term, state) do
+        state =
+          update_term(unquote(name), state.fetcher, state.fetcher_state, state.current_version)
+
         {:noreply, state}
       end
 
@@ -117,40 +134,46 @@ defmodule RemotePersistentTerm do
       def deserialize(binary), do: {:ok, binary}
       defoverridable deserialize: 1
 
-      def update_term(prev_version \\ nil) do
-        RemotePersistentTerm.update_term(
-          unquote(fetcher),
-          unquote(name),
-          prev_version,
-          &put/1
-        )
+      def update_term(state, fetcher, fetcher_state, prev_version) do
+        version =
+          RemotePersistentTerm.update_term(
+            unquote(name),
+            fetcher,
+            fetcher_state,
+            prev_version,
+            &deserialize/1,
+            &put/1
+          )
+
+        %{state | current_version: version}
       end
     end
   end
 
-  def update_term(module, fetcher, fetcher_state, prev_version, put_fun) do
-    case fetcher.current_version(fetcher_state) do
-      {:ok, current_version} ->
-        if prev_version != current_version do
-          case fetcher.download(fetcher_state) do
-            {:ok, data} ->
-              put_fun.(data)
-
-            {:error, reason} ->
-              Logger.error("#{module} - failed to fetch remote term, reason: #{inspect(reason)}")
-          end
-
-          current_version
-        else
-          prev_version
-        end
+  def update_term(name, fetcher, fetcher_state, prev_version, deserialize_fun, put_fun) do
+    with {:ok, current_version} <- fetcher.current_version(fetcher_state),
+         true <- prev_version != current_version,
+         :ok <- download_and_store_term(fetcher, fetcher_state, deserialize_fun, put_fun) do
+      current_version
+    else
+      false ->
+        Logger.info("#{name} - up to date")
+        prev_version
 
       {:error, reason} ->
-        Logger.error(
-          "#{module} - failed to fetch current version of remote term, reason: #{inspect(reason)}"
-        )
+        Logger.error("#{name} - failed to update remote term, reason: #{inspect(reason)}")
 
         prev_version
+    end
+  end
+
+  @doc false
+  def fetcher_mod(_type = :s3), do: Fetcher.S3
+
+  defp download_and_store_term(fetcher, fetcher_state, deserialize_fun, put_fun) do
+    with {:ok, term} <- fetcher.download(fetcher_state),
+         {:ok, deserialized} <- deserialize_fun.(term) do
+      put_fun.(deserialized)
     end
   end
 end
