@@ -2,7 +2,7 @@ defmodule RemotePersistentTerm do
   @moduledoc """
   Periodically fetch data from a remote source and store it in a [persistent_term](https://www.erlang.org/doc/man/persistent_term.html).
 
-  `use` this module to define a GenServer that will manage the state of your fetcher and periodically
+  `use` this module to define a GenServer that will manage the state of your fetcher and keep your term up to date.
   """
   alias RemotePersistentTerm.Fetcher
   require Logger
@@ -104,19 +104,13 @@ defmodule RemotePersistentTerm do
         if unquote(valid_opts[:lazy_init?]) do
           {:ok, state, {:continue, :fetch_term}}
         else
-          state =
-            update_term(unquote(name), state.fetcher, state.fetcher_state, state.current_version)
-
-          {:ok, state}
+          {:ok, update_term(state)}
         end
       end
 
       @impl GenServer
       def handle_continue(:fetch_term, state) do
-        state =
-          update_term(unquote(name), state.fetcher, state.fetcher_state, state.current_version)
-
-        {:noreply, state}
+        {:noreply, update_term(state)}
       end
 
       @impl GenServer
@@ -134,13 +128,13 @@ defmodule RemotePersistentTerm do
       def deserialize(binary), do: {:ok, binary}
       defoverridable deserialize: 1
 
-      def update_term(state, fetcher, fetcher_state, prev_version) do
+      def update_term(state) do
         version =
           RemotePersistentTerm.update_term(
             unquote(name),
-            fetcher,
-            fetcher_state,
-            prev_version,
+            state.fetcher_mod,
+            state.fetcher_state,
+            state.current_version,
             &deserialize/1,
             &put/1
           )
