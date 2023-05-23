@@ -25,6 +25,7 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
       doc: "The key within the s3 bucket which refers to the remote term."
     ]
   ]
+
   @doc """
   Initialize an S3 Fetcher.
 
