@@ -37,15 +37,6 @@ defmodule RemotePersistentTerm do
       See [the docs](https://www.erlang.org/doc/man/persistent_term.html) for more info."
       """
     ],
-    refresh_timeout: [
-      type: :pos_integer,
-      required: false,
-      default: :timer.minutes(5),
-      doc: """
-      When manually refreshing the term via the `update/0` function, this timeout will be \
-      passed to `GenServer.call/3`.
-      """
-    ],
     lazy_init?: [
       type: :boolean,
       required: false,
@@ -57,6 +48,14 @@ defmodule RemotePersistentTerm do
       downloaded and no data is available. If this is not acceptable, set this \
       value to `false` (the default).
       """
+    ],
+    alias: [
+      type: :atom,
+      required: false,
+      doc: """
+      An alias for this term. A value will be generated based on the module \
+      name if no value is provided. Used for Telemetry events.
+      """
     ]
   ]
 
@@ -66,7 +65,7 @@ defmodule RemotePersistentTerm do
           refresh_interval: pos_integer(),
           current_version: String.t()
         }
-  defstruct [:fetcher_mod, :fetcher_state, :refresh_interval, :current_version]
+  defstruct [:fetcher_mod, :fetcher_state, :refresh_interval, :current_version, :name]
 
   @doc """
   Define a GenServer that will manage this specific persistent_term.
@@ -97,8 +96,6 @@ defmodule RemotePersistentTerm do
   #{NimbleOptions.docs(@opts_schema)}
   """
   defmacro __using__(_opts) do
-    name = __MODULE__ |> to_string |> String.split(".") |> List.last() |> Macro.underscore()
-
     quote do
       use GenServer
 
@@ -115,7 +112,8 @@ defmodule RemotePersistentTerm do
         state = %RemotePersistentTerm{
           fetcher_mod: fetcher_mod,
           fetcher_state: fetcher_mod.init(opts[:fetcher_opts]),
-          refresh_interval: opts[:refresh_interval]
+          refresh_interval: opts[:refresh_interval],
+          name: name(opts)
         }
 
         if opts[:lazy_init?] do
@@ -132,19 +130,19 @@ defmodule RemotePersistentTerm do
 
       @impl GenServer
       def handle_call(:update, _, state) do
-        {:reply, do_update_term(state)}
+        {:reply, :ok, do_update_term(state)}
       end
 
-      @spec get() :: term()
-      def get, do: :persistent_term.get(__MODULE__)
+      @spec get() :: term() | nil
+      def get, do: :persistent_term.get(__MODULE__, nil)
       defoverridable get: 0
 
       @spec put(term()) :: :ok
       def put(term), do: :persistent_term.put(__MODULE__, term)
       defoverridable put: 1
 
-      @spec deserialize(binary()) :: {:ok, term()} | {:error, term()}
-      def deserialize(binary), do: {:ok, binary}
+      @spec deserialize(term()) :: {:ok, term()} | {:error, term()}
+      def deserialize(term), do: {:ok, term}
       defoverridable deserialize: 1
 
       @doc """
@@ -155,34 +153,48 @@ defmodule RemotePersistentTerm do
       defp do_update_term(state) do
         version =
           RemotePersistentTerm.update_term(
-            unquote(name),
-            state.fetcher_mod,
-            state.fetcher_state,
-            state.current_version,
+            state,
             &deserialize/1,
             &put/1
           )
 
         %{state | current_version: version}
       end
+
+      defp name(opts) do
+        opts[:alias] || __MODULE__ |> to_string |> String.split(".") |> tl() |> Enum.join(".")
+      end
     end
   end
 
-  def update_term(name, fetcher, fetcher_state, prev_version, deserialize_fun, put_fun) do
-    with {:ok, current_version} <- fetcher.current_version(fetcher_state),
-         true <- prev_version != current_version,
-         :ok <- download_and_store_term(fetcher, fetcher_state, deserialize_fun, put_fun) do
-      current_version
-    else
-      false ->
-        Logger.info("#{name} - up to date")
-        prev_version
+  def update_term(state, deserialize_fun, put_fun) do
+    start_meta = %{name: state.name}
 
-      {:error, reason} ->
-        Logger.error("#{name} - failed to update remote term, reason: #{inspect(reason)}")
+    :telemetry.span(
+      [:remote_persistent_term, :update],
+      start_meta,
+      fn ->
+        {status, version} =
+          with {:ok, current_version} <- state.fetcher_mod.current_version(state.fetcher_state),
+               true <- state.current_version != current_version,
+               :ok <- download_and_store_term(state, deserialize_fun, put_fun) do
+            {:updated, current_version}
+          else
+            false ->
+              Logger.info("#{state.name} - up to date")
+              {:not_updated, state.current_version}
 
-        prev_version
-    end
+            {:error, reason} ->
+              Logger.error(
+                "#{state.name} - failed to update remote term, reason: #{inspect(reason)}"
+              )
+
+              {:not_updated, state.current_version}
+          end
+
+        {version, Map.put(start_meta, :status, status)}
+      end
+    )
   end
 
   @doc false
@@ -199,8 +211,8 @@ defmodule RemotePersistentTerm do
   @doc false
   def validate_options(opts), do: NimbleOptions.validate(opts, @opts_schema)
 
-  defp download_and_store_term(fetcher, fetcher_state, deserialize_fun, put_fun) do
-    with {:ok, term} <- fetcher.download(fetcher_state),
+  defp download_and_store_term(state, deserialize_fun, put_fun) do
+    with {:ok, term} <- state.fetcher_mod.download(state.fetcher_state),
          {:ok, deserialized} <- deserialize_fun.(term) do
       put_fun.(deserialized)
     end
