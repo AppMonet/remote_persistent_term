@@ -211,6 +211,7 @@ defmodule RemotePersistentTerm do
   """
   @callback deserialize(term()) :: {:ok, term()} | {:error, term()}
 
+  @doc false
   def update_term(state, deserialize_fun, put_fun) do
     start_meta = %{name: state.name}
 
