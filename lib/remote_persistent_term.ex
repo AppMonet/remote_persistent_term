@@ -1,6 +1,8 @@
 defmodule RemotePersistentTerm do
   @moduledoc """
-  Periodically fetch data from a remote source and store it in a [persistent_term](https://www.erlang.org/doc/man/persistent_term.html).
+  Fetch data from a remote source and store it in a [persistent_term](https://www.erlang.org/doc/man/persistent_term.html).
+
+  Can be configured to periodically check for updates.
 
   `use` this module to define a GenServer that will manage the state of your fetcher and keep your term up to date.
   """
@@ -98,6 +100,7 @@ defmodule RemotePersistentTerm do
   defmacro __using__(_opts) do
     quote do
       use GenServer
+      @behaviour RemotePersistentTerm
 
       def start_link(opts) do
         with {:ok, valid_opts} <- RemotePersistentTerm.validate_options(opts) do
@@ -133,14 +136,17 @@ defmodule RemotePersistentTerm do
         {:reply, :ok, do_update_term(state)}
       end
 
+      @impl RemotePersistentTerm
       @spec get() :: term() | nil
       def get, do: :persistent_term.get(__MODULE__, nil)
       defoverridable get: 0
 
+      @impl RemotePersistentTerm
       @spec put(term()) :: :ok
       def put(term), do: :persistent_term.put(__MODULE__, term)
       defoverridable put: 1
 
+      @impl RemotePersistentTerm
       @spec deserialize(term()) :: {:ok, term()} | {:error, term()}
       def deserialize(term), do: {:ok, term}
       defoverridable deserialize: 1
@@ -166,6 +172,40 @@ defmodule RemotePersistentTerm do
       end
     end
   end
+
+  @doc """
+  Retrieve the currently stored term.
+
+  Overridable.
+  """
+  @callback get() :: term() | nil
+
+  @doc """
+  Update the persistent_term.
+
+  Overridable.
+
+  This is called after `deserialize/1`.
+  """
+  @callback put(term()) :: :ok | {:error, term()}
+
+  @doc """
+  Deserializes the remote term, before storing it.
+
+  Overridable.
+
+  Commonly the remote term is an ETF encoded binary. In this case you will likely want to
+  override this callback with something like:
+    ```
+    def deserialize(binary) do
+      {:ok, :erlang.binary_to_term(binary)}
+    rescue
+      _ ->
+        {:ok, "got invalid ETF"}
+    end
+    ```
+  """
+  @callback deserialize(term()) :: {:ok, term()} | {:error, term()}
 
   def update_term(state, deserialize_fun, put_fun) do
     start_meta = %{name: state.name}
