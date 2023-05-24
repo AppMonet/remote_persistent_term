@@ -112,17 +112,19 @@ defmodule RemotePersistentTerm do
       def init(opts) do
         fetcher_mod = opts[:fetcher_mod]
 
-        state = %RemotePersistentTerm{
-          fetcher_mod: fetcher_mod,
-          fetcher_state: fetcher_mod.init(opts[:fetcher_opts]),
-          refresh_interval: opts[:refresh_interval],
-          name: name(opts)
-        }
+        with {:ok, fetcher_state} <- fetcher_mod.init(opts[:fetcher_opts]) do
+          state = %RemotePersistentTerm{
+            fetcher_mod: fetcher_mod,
+            fetcher_state: fetcher_state,
+            refresh_interval: opts[:refresh_interval],
+            name: name(opts)
+          }
 
-        if opts[:lazy_init?] do
-          {:ok, state, {:continue, :fetch_term}}
-        else
-          {:ok, do_update_term(state)}
+          if opts[:lazy_init?] do
+            {:ok, state, {:continue, :fetch_term}}
+          else
+            {:ok, do_update_term(state)}
+          end
         end
       end
 
