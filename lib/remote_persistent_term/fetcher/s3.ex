@@ -1,6 +1,11 @@
 defmodule RemotePersistentTerm.Fetcher.S3 do
   @moduledoc """
   A Fetcher implementation for AWS S3.
+
+  In order to use this `Fetcher`, you must add `{Finch, name: AWS.Finch}`
+  to your supervision tree.
+
+  Even if you have many `S3` fetchers, just one `AWS.Finch` instance is enough.
   """
   require Logger
 
