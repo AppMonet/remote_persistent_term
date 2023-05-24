@@ -2,7 +2,7 @@ defmodule RemotePersistentTerm.MixProject do
   use Mix.Project
 
   @name "RemotePersistentTerm"
-  @version "0.1.1"
+  @version "0.1.2"
   @repo_url "https://github.com/AppMonet/remote_persistent_term"
 
   def project do
