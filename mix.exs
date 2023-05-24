@@ -22,6 +22,7 @@ defmodule RemotePersistentTerm.MixProject do
       {:nimble_options, "~> 1.0"},
       {:aws, "~> 0.13.0"},
       {:finch, "~> 0.16"},
+      {:telemetry, "~> 1.0"},
       {:ex_doc, "~> 0.27", only: :dev, runtime: false}
     ]
   end

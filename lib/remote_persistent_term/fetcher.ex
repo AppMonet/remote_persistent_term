@@ -25,5 +25,5 @@ defmodule RemotePersistentTerm.Fetcher do
   @doc """
   Download the term from the remote source.
   """
-  @callback download(state()) :: {:ok, binary()} | {:error, term()}
+  @callback download(state()) :: {:ok, term()} | {:error, term()}
 end
