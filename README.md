@@ -1,4 +1,5 @@
 # RemotePersistentTerm
+[[![Hex pm](https://img.shields.io/hexpm/v/remote_persistent_term.svg?style=flat)](https://hex.pm/packages/remote_persistent_term) [![Hexdocs.pm](https://img.shields.io/badge/hex-docs-lightgreen.svg)](https://hexdocs.pm/remote_persistent_term/)
 
 Load data from a remote source and store in it a persistent_term.
 Can periodically update the data if desired.
