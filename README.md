@@ -1,6 +1,7 @@
 # RemotePersistentTerm
 
-**TODO: Add description**
+Load data from a remote source and store in it a persistent_term.
+Can periodically update the data if desired.
 
 ## Installation
 
@@ -18,4 +19,3 @@ end
 Documentation can be generated with [ExDoc](https://github.com/elixir-lang/ex_doc)
 and published on [HexDocs](https://hexdocs.pm). Once published, the docs can
 be found at <https://hexdocs.pm/remote_persistent_term>.
-

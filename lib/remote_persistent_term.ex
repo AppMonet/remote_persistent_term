@@ -8,18 +8,19 @@ defmodule RemotePersistentTerm do
   require Logger
 
   @opts_schema [
-    remote_type: [
-      type: {:in, [:s3]},
+    fetcher_mod: [
+      type: {:custom, __MODULE__, :existing_module?, []},
       required: true,
-      default: :s3,
+      default: Fetcher.S3,
       doc: """
-      The type of remote source in which the term is stored. Only `:s3` \
-      is supported at this time."
+      The implementation of the `RemotePersistentTerm.Fetcher` behaviour which \
+      should be used. Either one of the built in modules or a custom module.
       """
     ],
     fetcher_opts: [
       type: :keyword_list,
-      required: true,
+      required: false,
+      default: [],
       doc: """
       Configuration options for the chosen fetcher implementation. \
       See your chosen implementation module for details."
@@ -34,6 +35,15 @@ defmodule RemotePersistentTerm do
       set the value to `nil`.
       Note: updating persistent_terms can be very expensive. \
       See [the docs](https://www.erlang.org/doc/man/persistent_term.html) for more info."
+      """
+    ],
+    refresh_timeout: [
+      type: :pos_integer,
+      required: false,
+      default: :timer.minutes(5),
+      doc: """
+      When manually refreshing the term via the `update/0` function, this timeout will be \
+      passed to `GenServer.call/3`.
       """
     ],
     lazy_init?: [
@@ -67,68 +77,82 @@ defmodule RemotePersistentTerm do
     The GenServer will check for a new version of `s3://my-bucket/my-object` every
     12 hours and store it in a persistent_term.
 
+    Define the module:
     ```
     defmodule MyRemotePterm do
-      use RemotePersistentTerm, 
-        remote_type: :s3,
-        fetcher_opts: [bucket: "my-bucket", key: "my-object"],
-        refresh_interval: :timer.hours(12)
+      use RemotePersistentTerm
     end
+    ```
+    In your supervision tree:
+    ```
+    {MyRemotePterm,
+     [
+       fetcher_mod: RemotePersistentTerm.Fetcher.S3,
+       fetcher_opts: [bucket: "my-bucket", key: "my-object"],
+       refresh_interval: :timer.hours(12)
+     ]}
     ```
 
   Options:
   #{NimbleOptions.docs(@opts_schema)}
   """
-  defmacro __using__(opts) do
-    valid_opts = NimbleOptions.validate!(opts, @opts_schema)
-    fetcher_mod = RemotePersistentTerm.fetcher_mod(valid_opts[:fetcher])
+  defmacro __using__(_opts) do
     name = __MODULE__ |> to_string |> String.split(".") |> List.last() |> Macro.underscore()
 
     quote do
       use GenServer
 
-      def start_link(_) do
-        GenServer.start_link(__MODULE__, [], name: __MODULE__)
+      def start_link(opts) do
+        with {:ok, valid_opts} <- RemotePersistentTerm.validate_options(opts) do
+          GenServer.start_link(__MODULE__, valid_opts, name: __MODULE__)
+        end
       end
 
       @impl GenServer
-      def init(_) do
-        fetcher_state = fetcher_mod.init(unquote(valid_opts[:fetcher_opts]))
+      def init(opts) do
+        fetcher_mod = opts[:fetcher_mod]
 
-        state = %__MODULE__{
-          fetcher_mod: unquote(fetcher_mod),
-          fetcher_state: fetcher_state,
-          refresh_interval: unquote(valid_opts[:refresh_interval])
+        state = %RemotePersistentTerm{
+          fetcher_mod: fetcher_mod,
+          fetcher_state: fetcher_mod.init(opts[:fetcher_opts]),
+          refresh_interval: opts[:refresh_interval]
         }
 
-        if unquote(valid_opts[:lazy_init?]) do
+        if opts[:lazy_init?] do
           {:ok, state, {:continue, :fetch_term}}
         else
-          {:ok, update_term(state)}
+          {:ok, do_update_term(state)}
         end
       end
 
       @impl GenServer
       def handle_continue(:fetch_term, state) do
-        {:noreply, update_term(state)}
+        {:noreply, do_update_term(state)}
       end
 
       @impl GenServer
-      def handle_info(:update, state), do: {:noreply, update_term(state)}
+      def handle_call(:update, _, state) do
+        {:reply, do_update_term(state)}
+      end
 
       @spec get() :: term()
       def get, do: :persistent_term.get(__MODULE__)
-      defoverridable get: 1
+      defoverridable get: 0
 
       @spec put(term()) :: :ok
       def put(term), do: :persistent_term.put(__MODULE__, term)
       defoverridable put: 1
 
-      @spec deserialize(binary()) :: {:ok, term()} | {:error, reason}
+      @spec deserialize(binary()) :: {:ok, term()} | {:error, term()}
       def deserialize(binary), do: {:ok, binary}
       defoverridable deserialize: 1
 
-      def update_term(state) do
+      @doc """
+      Immediately update the term.
+      """
+      def update, do: GenServer.call(__MODULE__, :update, :timer.minutes(5_000))
+
+      defp do_update_term(state) do
         version =
           RemotePersistentTerm.update_term(
             unquote(name),
@@ -162,7 +186,18 @@ defmodule RemotePersistentTerm do
   end
 
   @doc false
-  def fetcher_mod(_type = :s3), do: Fetcher.S3
+  def existing_module?(value) do
+    case Code.ensure_compiled(value) do
+      {:module, ^value} ->
+        {:ok, value}
+
+      _ ->
+        {:error, "#{__MODULE__} does not exist"}
+    end
+  end
+
+  @doc false
+  def validate_options(opts), do: NimbleOptions.validate(opts, @opts_schema)
 
   defp download_and_store_term(fetcher, fetcher_state, deserialize_fun, put_fun) do
     with {:ok, term} <- fetcher.download(fetcher_state),
