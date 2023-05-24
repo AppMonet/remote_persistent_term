@@ -137,17 +137,14 @@ defmodule RemotePersistentTerm do
       end
 
       @impl RemotePersistentTerm
-      @spec get() :: term() | nil
       def get, do: :persistent_term.get(__MODULE__, nil)
       defoverridable get: 0
 
       @impl RemotePersistentTerm
-      @spec put(term()) :: :ok
       def put(term), do: :persistent_term.put(__MODULE__, term)
       defoverridable put: 1
 
       @impl RemotePersistentTerm
-      @spec deserialize(term()) :: {:ok, term()} | {:error, term()}
       def deserialize(term), do: {:ok, term}
       defoverridable deserialize: 1
 
@@ -205,7 +202,7 @@ defmodule RemotePersistentTerm do
       {:ok, :erlang.binary_to_term(binary)}
     rescue
       _ ->
-        {:ok, "got invalid ETF"}
+        {:error, "got invalid ETF"}
     end
     ```
   """
