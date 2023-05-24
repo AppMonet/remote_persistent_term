@@ -164,6 +164,10 @@ defmodule RemotePersistentTerm do
             &put/1
           )
 
+        if is_integer(state.refresh_interval) do
+          Process.send_after(self(), :update, state.refresh_interval)
+        end
+
         %{state | current_version: version}
       end
 
