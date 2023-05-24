@@ -11,6 +11,7 @@ defmodule RemotePersistentTerm.MixProject do
       version: @version,
       name: @name,
       source_url: @repo_url,
+      description: "Store remote data as a persistent_term.",
       elixir: "~> 1.12",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
