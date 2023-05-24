@@ -61,16 +61,16 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
 
   @impl true
   def current_version(state) do
-    with {:ok, %{"ListBucketResult" => %{"Contents" => contents}}, _} <-
-           AWS.S3.list_objects_v2(state.client, state.bucket),
-         %{e_tag: etag} when is_binary(etag) <- find_latest(contents, state.key) do
+    with {:ok, %{"ListVersionsResult" => %{"Version" => contents}}, _} <-
+           AWS.S3.list_object_versions(state.client, state.bucket),
+         {:ok, %{"ETag" => etag}} <- find_latest(contents, state.key) do
       Logger.info("found latest version of s3://#{state.bucket}/#{state.key}: #{etag}")
       {:ok, etag}
     else
-      {:error, {:http_error, _status, %{body: error}}} ->
-        {:error, error}
+      {:error, {:unexpected_response, %{body: reason}}} ->
+        {:error, reason}
 
-      _ ->
+      {:error, :not_found} ->
         {:error, "could not find s3://#{state.bucket}/#{state.key}"}
     end
   end
@@ -89,10 +89,16 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
     end
   end
 
-  defp find_latest(contents, key) do
+  defp find_latest([_ | _] = contents, key) do
     Enum.find(contents, fn
-      %{key: ^key} -> true
+      %{"Key" => ^key, "IsLatest" => "true"} -> true
       _ -> false
     end)
+    |> case do
+      res when is_map(res) -> {:ok, res}
+      _ -> {:error, :not_found}
+    end
   end
+
+  defp find_latest(_, _), do: {:error, :not_found}
 end
