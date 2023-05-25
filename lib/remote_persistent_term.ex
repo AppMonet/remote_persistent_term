@@ -138,6 +138,11 @@ defmodule RemotePersistentTerm do
         {:reply, :ok, do_update_term(state)}
       end
 
+      @impl GenServer
+      def handle_info(:update, state) do
+        {:noreply, do_update_term(state)}
+      end
+
       @impl RemotePersistentTerm
       def get, do: :persistent_term.get(__MODULE__, nil)
       defoverridable get: 0
