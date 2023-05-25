@@ -135,7 +135,7 @@ defmodule RemotePersistentTerm do
 
       @impl GenServer
       def handle_cast(:update, state) do
-        {:reply, :ok, do_update_term(state)}
+        {:noreply, do_update_term(state)}
       end
 
       @impl GenServer
