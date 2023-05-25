@@ -11,7 +11,7 @@ The package can be installed by adding `remote_persistent_term` to your list of 
 ```elixir
 def deps do
   [
-    {:remote_persistent_term, "~> 0.2.1"}
+    {:remote_persistent_term, "~> 0.2.2"}
   ]
 end
 ```
