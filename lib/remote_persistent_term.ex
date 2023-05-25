@@ -246,6 +246,7 @@ defmodule RemotePersistentTerm do
 
   @doc false
   def existing_module?(value) do
+    # could possible enforce that the Fetcher behaviour is implemented too...
     case Code.ensure_compiled(value) do
       {:module, ^value} ->
         {:ok, value}
