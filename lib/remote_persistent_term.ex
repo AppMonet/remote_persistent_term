@@ -134,7 +134,7 @@ defmodule RemotePersistentTerm do
       end
 
       @impl GenServer
-      def handle_call(:update, _, state) do
+      def handle_cast(:update, state) do
         {:reply, :ok, do_update_term(state)}
       end
 
@@ -155,10 +155,8 @@ defmodule RemotePersistentTerm do
       def deserialize(term), do: {:ok, term}
       defoverridable deserialize: 1
 
-      @doc """
-      Immediately update the term.
-      """
-      def update, do: GenServer.call(__MODULE__, :update, :timer.minutes(5_000))
+      @doc "Trigger an update."
+      def update, do: GenServer.cast(__MODULE__, :update)
 
       defp do_update_term(state) do
         version =
