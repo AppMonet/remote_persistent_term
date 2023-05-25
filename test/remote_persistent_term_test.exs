@@ -18,6 +18,7 @@ defmodule RemotePersistentTermTest do
 
   test "basic example with Static fetcher" do
     start_supervised!({StaticRemotePersistentTerm, [fetcher_mod: MyStaticFetcher]})
+    StaticRemotePersistentTerm.update()
     assert %{my: :data} == StaticRemotePersistentTerm.get()
   end
 
