@@ -1,22 +1,16 @@
 defmodule RemotePersistentTerm.Fetcher.S3 do
   @moduledoc """
   A Fetcher implementation for AWS S3.
-
-  In order to use this `Fetcher`, you must add `{Finch, name: AWS.Finch}`
-  to your supervision tree.
-
-  Even if you have many `S3` fetchers, just one `AWS.Finch` instance is enough.
   """
   require Logger
 
   @behaviour RemotePersistentTerm.Fetcher
 
   @type t :: %__MODULE__{
-          client: AWS.Client.t(),
           bucket: String.t(),
           key: String.t()
         }
-  defstruct [:client, :bucket, :key]
+  defstruct [:bucket, :key]
 
   @opts_schema [
     bucket: [
@@ -46,13 +40,8 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
   @impl true
   def init(opts) do
     with {:ok, valid_opts} <- NimbleOptions.validate(opts, @opts_schema) do
-      client =
-        AWS.Client.create()
-        |> AWS.Client.put_http_client({AWS.HTTPClient.Finch, []})
-
       {:ok,
        %__MODULE__{
-         client: client,
          bucket: valid_opts[:bucket],
          key: valid_opts[:key]
        }}
@@ -61,9 +50,9 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
 
   @impl true
   def current_version(state) do
-    with {:ok, %{"ListVersionsResult" => %{"Version" => contents}}, _} <-
-           AWS.S3.list_object_versions(state.client, state.bucket),
-         {:ok, %{"ETag" => etag}} <- find_latest(contents, state.key) do
+    with {:ok, %{body: %{contents: contents}}} <-
+           ExAws.S3.list_objects(state.bucket) |> ExAws.request(),
+         {:ok, %{e_tag: etag}} <- find_latest(contents, state.key) do
       Logger.info("found latest version of s3://#{state.bucket}/#{state.key}: #{etag}")
       {:ok, etag}
     else
@@ -79,11 +68,10 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
   def download(state) do
     Logger.info("downloading s3://#{state.bucket}/#{state.key}...")
 
-    case AWS.S3.get_object(state.client, state.bucket, state.key) do
-      {:ok, _, %{body: body}} ->
-        Logger.debug("downloaded s3://#{state.bucket}/#{state.key}!")
-        {:ok, body}
-
+    with {:ok, %{body: body}} <- ExAws.S3.get_object(state.bucket, state.key) |> ExAws.request() do
+      Logger.debug("downloaded s3://#{state.bucket}/#{state.key}!")
+      {:ok, body}
+    else
       {:error, reason} ->
         {:error, inspect(reason)}
     end
@@ -91,8 +79,11 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
 
   defp find_latest([_ | _] = contents, key) do
     Enum.find(contents, fn
-      %{"Key" => ^key, "IsLatest" => "true"} -> true
-      _ -> false
+      %{key: ^key} ->
+        true
+
+      _ ->
+        false
     end)
     |> case do
       res when is_map(res) -> {:ok, res}
