@@ -29,10 +29,13 @@ defmodule RemotePersistentTerm.MixProject do
   defp deps do
     [
       {:nimble_options, "~> 1.0"},
-      {:aws, "~> 0.13.0"},
-      {:finch, "~> 0.16"},
       {:telemetry, "~> 1.0"},
-      {:ex_doc, "~> 0.27", only: :dev, runtime: false}
+      {:ex_doc, "~> 0.27", only: :dev, runtime: false},
+      {:ex_aws, "~> 2.1"},
+      {:ex_aws_s3, "~> 2.0"},
+      {:configparser_ex, "~> 4.0"},
+      {:hackney, "~> 1.9"},
+      {:sweet_xml, "~> 0.6"}
     ]
   end
 
