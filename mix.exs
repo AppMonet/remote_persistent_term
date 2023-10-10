@@ -35,7 +35,9 @@ defmodule RemotePersistentTerm.MixProject do
       {:ex_aws_s3, "~> 2.0"},
       {:configparser_ex, "~> 4.0", optional: true},
       {:hackney, "~> 1.9"},
-      {:sweet_xml, "~> 0.6"}
+      {:sweet_xml, "~> 0.6"},
+      {:mock, "~> 0.3.0", only: :test},
+      {:mint, "~> 1.0", only: :test}
     ]
   end
 
