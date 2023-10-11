@@ -5,6 +5,7 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
   require Logger
 
   @behaviour RemotePersistentTerm.Fetcher
+  @aws_client Application.compile_env!(:remote_persistent_term, :aws_client)
 
   @type t :: %__MODULE__{
           bucket: String.t(),
@@ -51,7 +52,7 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
   @impl true
   def current_version(state) do
     with {:ok, %{body: %{contents: contents}}} <-
-           ExAws.S3.list_objects(state.bucket) |> ExAws.request(),
+           ExAws.S3.list_objects(state.bucket) |> @aws_client.request(),
          {:ok, %{e_tag: etag}} <- find_latest(contents, state.key) do
       Logger.info("found latest version of s3://#{state.bucket}/#{state.key}: #{etag}")
       {:ok, etag}
@@ -61,6 +62,10 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
 
       {:error, :not_found} ->
         {:error, "could not find s3://#{state.bucket}/#{state.key}"}
+
+      {:error, reason} ->
+        Logger.error("#{__MODULE__} - unknown error: #{inspect(reason)}")
+        {:error, "Unknown error"}
     end
   end
 
@@ -68,7 +73,8 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
   def download(state) do
     Logger.info("downloading s3://#{state.bucket}/#{state.key}...")
 
-    with {:ok, %{body: body}} <- ExAws.S3.get_object(state.bucket, state.key) |> ExAws.request() do
+    with {:ok, %{body: body}} <-
+           ExAws.S3.get_object(state.bucket, state.key) |> @aws_client.request() do
       Logger.debug("downloaded s3://#{state.bucket}/#{state.key}!")
       {:ok, body}
     else
