@@ -5,7 +5,7 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
   require Logger
 
   @behaviour RemotePersistentTerm.Fetcher
-  @aws_client Application.compile_env!(:remote_persistent_term, :aws_client)
+  @aws_client Application.compile_env(:remote_persistent_term, :aws_client, ExAws)
 
   @type t :: %__MODULE__{
           bucket: String.t(),
