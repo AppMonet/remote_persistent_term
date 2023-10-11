@@ -63,10 +63,6 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
       {:error, :not_found} ->
         {:error, "could not find s3://#{state.bucket}/#{state.key}"}
 
-      # Handles Mint.TransportError
-      {:error, %{reason: reason}} ->
-        {:error, reason}
-
       {:error, reason} ->
         Logger.error("#{__MODULE__} - unknown error: #{inspect(reason)}")
         {:error, "Unknown error"}
