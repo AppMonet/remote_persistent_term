@@ -21,7 +21,7 @@ defmodule RemotePersistentTerm.Fetcher.Http do
   ]
 
   @doc """
-  Initialize an HTTP Fetcher.
+  Initialize a HTTP Fetcher.
 
   Options:
   #{NimbleOptions.docs(@opts_schema)}
@@ -43,10 +43,11 @@ defmodule RemotePersistentTerm.Fetcher.Http do
 
   @impl true
   def download(state) do
-    Logger.info("Downloading remote term from #{state.url}")
+    Logger.info("downloading remote term from #{state.url}")
 
     with {:ok, resp} <- Req.get(state.url, cache: true) do
       if resp.status < 300 do
+        Logger.info("successfully downloaded remote term from #{state.url}")
         {:ok, resp.body}
       else
         {:error, {:status, resp.status}}
