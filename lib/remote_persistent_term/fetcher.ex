@@ -17,7 +17,7 @@ defmodule RemotePersistentTerm.Fetcher do
   @callback init(opts()) :: {:ok, state()} | {:error, term()}
 
   @doc """
-  Check the current version of the remote term. Useed to avoid downloading the
+  Check the current version of the remote term. Used to avoid downloading the
   same term multiple times.
   """
   @callback current_version(state()) :: {:ok, version()} | {:error, term()}
