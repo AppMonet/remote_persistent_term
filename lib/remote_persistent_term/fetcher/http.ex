@@ -47,7 +47,10 @@ defmodule RemotePersistentTerm.Fetcher.Http do
 
     with {:ok, resp} <- Req.get(state.url, cache: true) do
       if resp.status < 300 do
-        Logger.info("successfully downloaded remote term from #{state.url}")
+        Logger.info(
+          "successfully downloaded remote term from #{state.url} with status #{resp.status}"
+        )
+
         {:ok, resp.body}
       else
         {:error, {:status, resp.status}}

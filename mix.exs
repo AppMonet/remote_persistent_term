@@ -37,7 +37,8 @@ defmodule RemotePersistentTerm.MixProject do
       {:hackney, "~> 1.9"},
       {:sweet_xml, "~> 0.6"},
       {:mox, "~> 1.0", only: :test},
-      {:req, "~> 0.4.0"}
+      {:req, "~> 0.4.0"},
+      {:bypass, "~> 2.1", only: :test}
     ]
   end
 
