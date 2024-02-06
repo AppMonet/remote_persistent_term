@@ -45,7 +45,7 @@ defmodule RemotePersistentTerm do
       default: false,
       doc: """
       If true, the GenServer will start up immediately and the term will be \
-      populated in a `handle_continue/2`. 
+      populated in a `handle_continue/2`.
       This means that there will be a period while the remote term is being \
       downloaded and no data is available. If this is not acceptable, set this \
       value to `false` (the default).
@@ -166,9 +166,7 @@ defmodule RemotePersistentTerm do
             &put/1
           )
 
-        if is_integer(state.refresh_interval) do
-          Process.send_after(self(), :update, state.refresh_interval)
-        end
+        RemotePersistentTerm.schedule_update(self(), state.refresh_interval)
 
         %{state | current_version: version}
       end
@@ -178,6 +176,15 @@ defmodule RemotePersistentTerm do
       end
     end
   end
+
+  @doc """
+  Schedule an update of the persistent_term.
+  """
+  def schedule_update(pid, refresh_interval) when is_integer(refresh_interval) and is_pid(pid) do
+    Process.send_after(pid, :update, refresh_interval)
+  end
+
+  def schedule_update(_pid, _refresh_interval), do: nil
 
   @doc """
   Retrieve the currently stored term.
