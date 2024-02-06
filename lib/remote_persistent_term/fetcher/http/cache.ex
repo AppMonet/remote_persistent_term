@@ -7,7 +7,6 @@ defmodule RemotePersistentTerm.Fetcher.Http.Cache do
 
   @max_age_regex ~r/max-age=(\d+)/
   @default_age 0
-  @minimum_refresh_interval :timer.minutes(5)
 
   @doc """
   Calculates the refresh interval from the cache-control and age headers.
@@ -19,7 +18,7 @@ defmodule RemotePersistentTerm.Fetcher.Http.Cache do
   def refresh_interval(resp) do
     with {:ok, max_age} <- max_age(resp) do
       age = age(resp)
-      refresh_interval = (max_age - age) |> :timer.seconds() |> validate_refresh_interval()
+      refresh_interval = (max_age - age) |> validate_refresh_interval() |> :timer.seconds()
       {:ok, refresh_interval}
     end
   end
@@ -49,11 +48,7 @@ defmodule RemotePersistentTerm.Fetcher.Http.Cache do
     end
   end
 
-  defp validate_refresh_interval(refresh_interval) do
-    if refresh_interval < @minimum_refresh_interval do
-      @minimum_refresh_interval
-    else
-      refresh_interval
-    end
+  defp validate_refresh_interval(ri) do
+    if ri < 0, do: 0, else: ri
   end
 end

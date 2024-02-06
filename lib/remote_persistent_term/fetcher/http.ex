@@ -9,10 +9,11 @@ defmodule RemotePersistentTerm.Fetcher.Http do
 
   @type t :: %__MODULE__{
           url: String.t(),
-          http_cache?: boolean()
+          http_cache?: boolean(),
+          min_refresh_interval: pos_integer()
         }
 
-  defstruct [:url, :http_cache?]
+  defstruct [:url, :http_cache?, :min_refresh_interval]
 
   @opts_schema [
     url: [
@@ -27,6 +28,13 @@ defmodule RemotePersistentTerm.Fetcher.Http do
       If true, the HTTP Caching spec will be used to schedule the next download.
 
       Should avoid setting both this value to true and `refresh_interval` to a value.
+      """
+    ],
+    min_refresh_interval: [
+      type: :pos_integer,
+      default: :timer.minutes(5),
+      doc: """
+      The default refresh interval in milliseconds. This value is used when the `http_cache?` is set to true.
       """
     ]
   ]
@@ -57,9 +65,9 @@ defmodule RemotePersistentTerm.Fetcher.Http do
   def download(state) do
     Logger.info("downloading remote term from #{state.url}")
 
-    with {:ok, resp} <- Req.get(state.url),
+    with {:ok, resp} <- Req.get(state.url, [cache: false]),
          :ok <- response_status(state.url, resp.status),
-         :ok <- schedule(resp, state.http_cache?) do
+         :ok <- schedule(resp, state) do
       {:ok, resp.body}
     end
   end
@@ -73,8 +81,15 @@ defmodule RemotePersistentTerm.Fetcher.Http do
     end
   end
 
-  defp schedule(resp, true) do
+  defp schedule(resp, %{http_cache?: true} = state) do
     with {:ok, refresh_interval} <- Cache.refresh_interval(resp) do
+      refresh_interval =
+        if refresh_interval < state.min_refresh_interval do
+          state.min_refresh_interval
+        else
+          refresh_interval
+        end
+
       RemotePersistentTerm.schedule_update(self(), refresh_interval)
       :ok
     end
