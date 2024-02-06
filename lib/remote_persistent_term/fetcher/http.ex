@@ -51,7 +51,8 @@ defmodule RemotePersistentTerm.Fetcher.Http do
       {:ok,
        %__MODULE__{
          url: valid_opts[:url],
-         http_cache?: valid_opts[:http_cache?]
+         http_cache?: valid_opts[:http_cache?],
+         min_refresh_interval: valid_opts[:min_refresh_interval]
        }}
     end
   end
@@ -65,7 +66,7 @@ defmodule RemotePersistentTerm.Fetcher.Http do
   def download(state) do
     Logger.info("downloading remote term from #{state.url}")
 
-    with {:ok, resp} <- Req.get(state.url, [cache: false]),
+    with {:ok, resp} <- Req.get(state.url, cache: false),
          :ok <- response_status(state.url, resp.status),
          :ok <- schedule(resp, state) do
       {:ok, resp.body}

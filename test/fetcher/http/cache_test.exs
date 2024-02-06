@@ -49,14 +49,14 @@ defmodule RemotePersistentTerm.Fetcher.Http.CacheTest do
       {%{
          "cache-control" => ["MAX-aGe=89890"]
        }, 89890},
-       # negative value should be treated as 0
-       {%{
-        "cache-control" => ["max-age=100, private, must-revalidate"],
-        "content-length" => ["0"],
-        "date" => ["Tue, 06 Feb 2024 11:05:02 GMT"],
-        "server" => ["Cowboy"],
-        "age" => ["1000"]
-      }, 0},
+      # negative value should be treated as 0
+      {%{
+         "cache-control" => ["max-age=100, private, must-revalidate"],
+         "content-length" => ["0"],
+         "date" => ["Tue, 06 Feb 2024 11:05:02 GMT"],
+         "server" => ["Cowboy"],
+         "age" => ["1000"]
+       }, 0}
     ]
 
     Enum.map(spec, fn {headers, expected_refresh_interval} ->
