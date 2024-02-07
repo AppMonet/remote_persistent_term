@@ -30,8 +30,7 @@ defmodule RemotePersistentTerm.Fetcher.Http do
           type: :boolean,
           default: false,
           doc: """
-          If true, the HTTP Caching spec will be used to schedule the next download.
-          The user should avoid setting both this value to true and `RemotePersistentTerm.refresh_interval` to a value.
+          If true, the HTTP Caching spec will be used to schedule the next download and `:refresh_interval` can be omitted. 
           """
         ],
         min_refresh_interval_ms: [
