@@ -10,10 +10,10 @@ defmodule RemotePersistentTerm.Fetcher.Http do
   @type t :: %__MODULE__{
           url: String.t(),
           http_cache?: boolean(),
-          min_refresh_interval: pos_integer()
+          min_refresh_interval_ms: pos_integer()
         }
 
-  defstruct [:url, :http_cache?, :min_refresh_interval]
+  defstruct [:url, :http_cache?, :min_refresh_interval_ms]
 
   @opts_schema [
     url: [
@@ -21,21 +21,28 @@ defmodule RemotePersistentTerm.Fetcher.Http do
       required: true,
       doc: "The url from which the remote term is downloaded."
     ],
-    http_cache?: [
-      type: :boolean,
-      default: false,
-      doc: """
-      If true, the HTTP Caching spec will be used to schedule the next download.
-
-      Should avoid setting both this value to true and `refresh_interval` to a value.
-      """
-    ],
-    min_refresh_interval: [
-      type: :pos_integer,
-      default: :timer.minutes(5),
-      doc: """
-      The default refresh interval in milliseconds. This value is used when the `http_cache?` is set to true.
-      """
+    http_cache: [
+      type: :keyword_list,
+      doc: "Configuration options for the HTTP Caching spec.",
+      default: [],
+      keys: [
+        enabled?: [
+          type: :boolean,
+          default: false,
+          doc: """
+          If true, the HTTP Caching spec will be used to schedule the next download.
+          The user should avoid setting both this value to true and `RemotePersistentTerm.refresh_interval` to a value.
+          """
+        ],
+        min_refresh_interval_ms: [
+          type: :non_neg_integer,
+          default: :timer.seconds(30),
+          doc: """
+          The minimum time in milliseconds between refreshes.
+          This value is only used if `http_cache.enabled?` is true.
+          """
+        ]
+      ]
     ]
   ]
 
@@ -48,11 +55,13 @@ defmodule RemotePersistentTerm.Fetcher.Http do
   @impl true
   def init(opts) do
     with {:ok, valid_opts} <- NimbleOptions.validate(opts, @opts_schema) do
+      http_cache = Keyword.get(valid_opts, :http_cache, [])
+
       {:ok,
        %__MODULE__{
          url: valid_opts[:url],
-         http_cache?: valid_opts[:http_cache?],
-         min_refresh_interval: valid_opts[:min_refresh_interval]
+         http_cache?: http_cache[:enabled?],
+         min_refresh_interval_ms: http_cache[:min_refresh_interval_ms]
        }}
     end
   end
@@ -84,12 +93,7 @@ defmodule RemotePersistentTerm.Fetcher.Http do
 
   defp schedule(resp, %{http_cache?: true} = state) do
     with {:ok, refresh_interval} <- Cache.refresh_interval(resp) do
-      refresh_interval =
-        if refresh_interval < state.min_refresh_interval do
-          state.min_refresh_interval
-        else
-          refresh_interval
-        end
+      refresh_interval = max(refresh_interval, state.min_refresh_interval_ms)
 
       RemotePersistentTerm.schedule_update(self(), refresh_interval)
       :ok

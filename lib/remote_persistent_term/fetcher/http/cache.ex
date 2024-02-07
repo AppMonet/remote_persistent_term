@@ -10,22 +10,22 @@ defmodule RemotePersistentTerm.Fetcher.Http.Cache do
 
   @doc """
   Calculates the refresh interval from the cache-control and age headers.
-  Caching directives are case-insensitive. Multiple directives are permitted and must be comma-separated
+  Caching directives are case-insensitive. Multiple directives are permitted and must be comma-separated.
 
-  Refresh interval is in milliseconds
+  Refresh interval is in milliseconds.
   """
-  @spec refresh_interval(Req.Response.t()) :: {:ok, pos_integer()} | {:error, term()}
+  @spec refresh_interval(Req.Response.t()) :: {:ok, pos_integer()} | {:error, String.t()}
   def refresh_interval(resp) do
     with {:ok, max_age} <- max_age(resp) do
       age = age(resp)
-      refresh_interval = (max_age - age) |> validate_refresh_interval() |> :timer.seconds()
+      refresh_interval = max(max_age - age, 0) |> :timer.seconds()
       {:ok, refresh_interval}
     end
   end
 
   defp max_age(resp) do
     with [cache_control | _] <- Req.Response.get_header(resp, "cache-control"),
-         true <- is_binary(cache_control) do
+         true <- byte_size(cache_control) > 0 do
       value = String.downcase(cache_control)
 
       case Regex.run(@max_age_regex, value) do
@@ -46,9 +46,5 @@ defmodule RemotePersistentTerm.Fetcher.Http.Cache do
       [age] when is_binary(age) -> String.to_integer(age)
       _ -> @default_age
     end
-  end
-
-  defp validate_refresh_interval(ri) do
-    if ri < 0, do: 0, else: ri
   end
 end
