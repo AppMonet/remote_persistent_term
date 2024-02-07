@@ -30,7 +30,7 @@ defmodule RemotePersistentTerm.Fetcher.Http do
           type: :boolean,
           default: false,
           doc: """
-          If true, the HTTP Caching spec will be used to schedule the next download and `:refresh_interval` can be omitted. 
+          If true, the HTTP Caching spec will be used to schedule the next download and `:refresh_interval` can be omitted.
           """
         ],
         min_refresh_interval_ms: [
@@ -93,8 +93,8 @@ defmodule RemotePersistentTerm.Fetcher.Http do
   defp schedule(resp, %{http_cache?: true} = state) do
     with {:ok, refresh_interval} <- Cache.refresh_interval(resp) do
       refresh_interval = max(refresh_interval, state.min_refresh_interval_ms)
-
       RemotePersistentTerm.schedule_update(self(), refresh_interval)
+      Logger.info("scheduled next update for #{state.url} in #{refresh_interval} ms")
       :ok
     end
   end
