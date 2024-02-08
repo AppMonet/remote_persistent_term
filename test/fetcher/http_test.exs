@@ -18,21 +18,6 @@ defmodule RemotePersistentTerm.Fetcher.HttpTest do
     assert {:ok, "pong"} == Http.download(state)
   end
 
-  test "A 200 then a 304 should result in two 200 responses", c do
-    # First return a 200 with the data, then 304 with empty body
-    Bypass.expect(c.bypass, "GET", "/ping", fn conn ->
-      if cache_hit?(conn) do
-        Plug.Conn.resp(conn, 304, "")
-      else
-        Plug.Conn.resp(conn, 200, "pong")
-      end
-    end)
-
-    assert {:ok, state} = Http.init(url: "#{c.url}/ping")
-    assert {:ok, "pong"} == Http.download(state)
-    assert {:ok, "pong"} == Http.download(state)
-  end
-
   test "An error code should result in an error", c do
     Bypass.expect(c.bypass, "GET", "/ping", fn conn ->
       Plug.Conn.resp(conn, 404, "")
@@ -42,10 +27,31 @@ defmodule RemotePersistentTerm.Fetcher.HttpTest do
     assert {:error, _} = Http.download(state)
   end
 
-  defp cache_hit?(conn) do
-    case Plug.Conn.get_req_header(conn, "if-modified-since") do
-      [] -> false
-      _ -> true
-    end
+  test "Should schedule the next update if http_cache is enabled", c do
+    Bypass.expect(c.bypass, "GET", "/ping", fn conn ->
+      Plug.Conn.put_resp_header(conn, "cache-control", "max-age=0")
+      |> Plug.Conn.resp(200, "pong")
+    end)
+
+    {:ok, state} =
+      Http.init(url: "#{c.url}/ping", http_cache: [enabled?: true, min_refresh_interval_ms: 0])
+
+    assert {:ok, "pong"} == Http.download(state)
+
+    # this signifies that we are scheduling the next update
+    assert_receive :update
+  end
+
+  test "Should NOT schedule the next update if http_cache is disabled", c do
+    Bypass.expect(c.bypass, "GET", "/ping", fn conn ->
+      Plug.Conn.put_resp_header(conn, "cache-control", "max-age=0")
+      |> Plug.Conn.resp(200, "pong")
+    end)
+
+    # the cache should be disabled by default
+    {:ok, state} = Http.init(url: "#{c.url}/ping")
+    assert {:ok, "pong"} == Http.download(state)
+
+    refute_receive :update
   end
 end
