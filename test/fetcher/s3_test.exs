@@ -6,12 +6,12 @@ defmodule RemotePersistentTerm.Fetcher.S3Test do
   import ExUnit.CaptureLog
 
   test "Unknown error returns an error for current_version/1" do
-    expect(AwsClientMock, :request, fn _op ->
+    expect(AwsClientMock, :request, fn _op, _opts ->
       {:error, :unknown_error}
     end)
 
     assert capture_log(fn ->
-             assert {:error, "Unknown error"} = S3.current_version(%{bucket: "bucket"})
+             assert {:error, "Unknown error"} = S3.current_version(%S3{bucket: "bucket"})
            end) =~
              "Elixir.RemotePersistentTerm.Fetcher.S3 - unknown error: :unknown_error"
   end

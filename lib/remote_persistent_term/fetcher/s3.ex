@@ -9,9 +9,10 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
 
   @type t :: %__MODULE__{
           bucket: String.t(),
-          key: String.t()
+          key: String.t(),
+          region: String.t() | nil
         }
-  defstruct [:bucket, :key]
+  defstruct [:bucket, :key, :region]
 
   @opts_schema [
     bucket: [
@@ -23,6 +24,11 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
       type: :string,
       required: true,
       doc: "The key within the s3 bucket which refers to the remote term."
+    ],
+    region: [
+      type: :string,
+      required: false,
+      doc: "The AWS region of the s3 bucket."
     ]
   ]
 
@@ -51,8 +57,7 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
 
   @impl true
   def current_version(state) do
-    with {:ok, %{body: %{contents: contents}}} <-
-           ExAws.S3.list_objects(state.bucket) |> @aws_client.request(),
+    with {:ok, %{body: %{contents: contents}}} <- list_objects(state),
          {:ok, %{e_tag: etag}} <- find_latest(contents, state.key) do
       Logger.info("found latest version of s3://#{state.bucket}/#{state.key}: #{etag}")
       {:ok, etag}
@@ -73,14 +78,25 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
   def download(state) do
     Logger.info("downloading s3://#{state.bucket}/#{state.key}...")
 
-    with {:ok, %{body: body}} <-
-           ExAws.S3.get_object(state.bucket, state.key) |> @aws_client.request() do
+    with {:ok, %{body: body}} <- get_object(state) do
       Logger.debug("downloaded s3://#{state.bucket}/#{state.key}!")
       {:ok, body}
     else
       {:error, reason} ->
         {:error, inspect(reason)}
     end
+  end
+
+  defp list_objects(state) do
+    state.bucket
+    |> ExAws.S3.list_objects()
+    |> @aws_client.request(region: state.region)
+  end
+
+  defp get_object(state) do
+    state.bucket
+    |> ExAws.S3.get_object(state.key)
+    |> @aws_client.request(region: state.region)
   end
 
   defp find_latest([_ | _] = contents, key) do
