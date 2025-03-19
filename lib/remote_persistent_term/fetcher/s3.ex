@@ -10,7 +10,7 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
   @type t :: %__MODULE__{
           bucket: String.t(),
           key: String.t(),
-          region: String.t() | nil
+          region: String.t()
         }
   defstruct [:bucket, :key, :region]
 
@@ -27,7 +27,7 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
     ],
     region: [
       type: :string,
-      required: false,
+      required: true,
       doc: "The AWS region of the s3 bucket."
     ]
   ]
