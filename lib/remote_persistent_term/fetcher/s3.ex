@@ -50,7 +50,8 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
       {:ok,
        %__MODULE__{
          bucket: valid_opts[:bucket],
-         key: valid_opts[:key]
+         key: valid_opts[:key],
+         region: valid_opts[:region]
        }}
     end
   end
