@@ -10,9 +10,10 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
   @type t :: %__MODULE__{
           bucket: String.t(),
           key: String.t(),
-          region: String.t()
+          region: String.t(),
+          compression: atom() | nil
         }
-  defstruct [:bucket, :key, :region]
+  defstruct [:bucket, :key, :region, :compression]
 
   @opts_schema [
     bucket: [
@@ -29,6 +30,11 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
       type: :string,
       required: true,
       doc: "The AWS region of the s3 bucket."
+    ],
+    compression: [
+      type: {:in, [:gzip]},
+      required: false,
+      doc: "The compression algorithm used to compress the remote term."
     ]
   ]
 
@@ -79,9 +85,10 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
   def download(state) do
     Logger.info("downloading s3://#{state.bucket}/#{state.key}...")
 
-    with {:ok, %{body: body}} <- get_object(state) do
-      Logger.debug("downloaded s3://#{state.bucket}/#{state.key}!")
-      {:ok, body}
+    with {:ok, %{body: body}} <- get_object(state),
+         _ <- Logger.debug("downloaded s3://#{state.bucket}/#{state.key}!"),
+         {:ok, decompressed} <- decompress(state.compression, body) do
+      {:ok, decompressed}
     else
       {:error, reason} ->
         {:error, inspect(reason)}
@@ -115,4 +122,12 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
   end
 
   defp find_latest(_, _), do: {:error, :not_found}
+
+  defp decompress(:gzip, body) do
+    {:ok, :zlib.gunzip(body)}
+  rescue
+    e -> {:error, {"invalid gzip data", e}}
+  end
+
+  defp decompress(nil, body), do: {:ok, body}
 end
