@@ -31,4 +31,15 @@ defmodule RemotePersistentTerm.Fetcher.S3Test do
       assert {:ok, ^data} = S3.download(state)
     end
   end
+
+  describe "init/1" do
+    test "example" do
+      bucket = "my-bucket"
+      key = "my-key"
+      region = "my-region"
+
+      assert {:ok, %S3{bucket: bucket, key: key, region: region, compression: :gzip}} ==
+               S3.init(bucket: bucket, key: key, region: region, compression: :gzip)
+    end
+  end
 end
