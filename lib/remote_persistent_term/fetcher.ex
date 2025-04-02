@@ -33,7 +33,7 @@ defmodule RemotePersistentTerm.Fetcher do
   @callback download(state(), version()) :: {:ok, term()} | {:error, term()}
 
   @doc """
-  Logic for whether the request be retried.
+  Logic for whether the request should be retried.
   """
-  @callback retry(state(), version()) :: {:retry_new_version, version()} | :retry | :continue
+  @callback retry(state(), version()) :: {:retry_new_version, identifiers()} | :retry | :continue
 end
