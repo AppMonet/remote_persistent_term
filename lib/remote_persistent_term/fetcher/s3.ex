@@ -226,6 +226,7 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
       Logger.error(
         "Failed to fetch from primary region #{region}: #{inspect(reason)}, will try failover region #{failover_region}"
       )
+
       @aws_client.request(op, region: failover_region)
     end
   end
