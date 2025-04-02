@@ -66,13 +66,13 @@ defmodule RemotePersistentTerm.Fetcher.Http do
   end
 
   @impl true
-  def current_version(_state) do
-    {:ok, DateTime.utc_now() |> DateTime.to_string()}
+  def current_identifiers(_state) do
+    {:ok, %{version: DateTime.utc_now() |> DateTime.to_string()}}
   end
 
   @impl true
-  def download(state) do
-    Logger.info("downloading remote term from #{state.url}")
+  def download(state, version) do
+    Logger.info("downloading remote term from #{state.url} with version #{version}")
 
     with {:ok, resp} <- Req.get(state.url, cache: false),
          :ok <- response_status(state.url, resp.status),
@@ -80,6 +80,9 @@ defmodule RemotePersistentTerm.Fetcher.Http do
       {:ok, resp.body}
     end
   end
+
+  @impl true
+  def retry(_, _), do: :continue
 
   defp response_status(url, status) do
     if status < 300 do

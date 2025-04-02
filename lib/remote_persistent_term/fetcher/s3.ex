@@ -11,9 +11,10 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
           bucket: String.t(),
           key: String.t(),
           region: String.t(),
-          compression: atom() | nil
+          compression: atom() | nil,
+          fallback_to_previous_version?: boolean()
         }
-  defstruct [:bucket, :key, :region, :compression]
+  defstruct [:bucket, :key, :region, :compression, :fallback_to_previous_version?]
 
   @opts_schema [
     bucket: [
@@ -35,7 +36,14 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
       type: {:in, [:gzip]},
       required: false,
       doc: "The compression algorithm used to compress the remote term."
+    ],
+    fallback_to_previous_version?: [
+      type: :boolean,
+      required: false,
+      default: false,
+      doc: "Whether to fallback to a previous version of the S3 object if deserialization fails."
     ]
+    # todo add fallback to other region
   ]
 
   @doc """
@@ -58,17 +66,21 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
          bucket: valid_opts[:bucket],
          key: valid_opts[:key],
          region: valid_opts[:region],
-         compression: valid_opts[:compression]
+         compression: valid_opts[:compression],
+         fallback_to_previous_version?: valid_opts[:fallback_to_previous_version?]
        }}
     end
   end
 
   @impl true
-  def current_version(state) do
-    with {:ok, %{body: %{contents: contents}}} <- list_objects(state),
-         {:ok, %{e_tag: etag}} <- find_latest(contents, state.key) do
-      Logger.info("found latest version of s3://#{state.bucket}/#{state.key}: #{etag}")
-      {:ok, etag}
+  def current_identifiers(state) do
+    with {:ok, versions} <- list_object_versions(state),
+         {:ok, %{etag: etag, version_id: version}} <- find_latest(versions) do
+      Logger.info(
+        "found latest version of s3://#{state.bucket}/#{state.key}: with etag:#{etag} and version:#{version}"
+      )
+
+      {:ok, %{etag: etag, version: version}}
     else
       {:error, {:unexpected_response, %{body: reason}}} ->
         {:error, reason}
@@ -83,10 +95,10 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
   end
 
   @impl true
-  def download(state) do
-    Logger.info("downloading s3://#{state.bucket}/#{state.key}...")
+  def download(state, version) do
+    Logger.info("downloading s3://#{state.bucket}/#{state.key} with version #{version}")
 
-    with {:ok, %{body: body}} <- get_object(state),
+    with {:ok, %{body: body}} <- get_object(state, version),
          _ <- Logger.debug("downloaded s3://#{state.bucket}/#{state.key}!"),
          {:ok, decompressed} <- decompress(state.compression, body) do
       {:ok, decompressed}
@@ -96,21 +108,71 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
     end
   end
 
-  defp list_objects(state) do
+  @impl true
+  def retry(%{fallback_to_previous_version?: true} = state, version) do
+    Logger.info(
+      "Retry enabled, falling back to previous version as deserialization failed for s3://#{state.bucket}/#{state.key} with version #{version}"
+    )
+
+    case get_previous_version(state, version) do
+      {:ok, identifiers} ->
+        {:retry_new_version, identifiers}
+
+      _ ->
+        :continue
+    end
+  end
+
+  def retry(_, _), do: :continue
+
+  def get_previous_version(state, version_id) do
+    with {:ok, versions} <- list_object_versions(state) do
+      # Find the index of the current version
+      case Enum.find_index(versions, fn v -> v.version_id == version_id end) do
+        nil ->
+          Logger.error(
+            "Could not find version #{version_id} in the list of versions for s3://#{state.bucket}/#{state.key}"
+          )
+
+          :error
+
+        # Final version in the list
+        index when index == length(versions) - 1 ->
+          :error
+
+        index ->
+          previous = Enum.at(versions, index + 1)
+          {:ok, %{version: previous.version_id, etag: previous.etag}}
+      end
+    end
+  end
+
+  defp list_object_versions(state) do
+    res =
+      state.bucket
+      |> ExAws.S3.get_bucket_object_versions(prefix: state.key)
+      |> @aws_client.request(region: state.region)
+
+    with {:ok, %{body: %{versions: versions}}} <- res do
+      {:ok, versions}
+    end
+  end
+
+  defp get_object(state, version) when is_binary(version) do
     state.bucket
-    |> ExAws.S3.list_objects()
+    |> ExAws.S3.get_object(state.key, version_id: version)
     |> @aws_client.request(region: state.region)
   end
 
-  defp get_object(state) do
+  defp get_object(state, _) do
     state.bucket
     |> ExAws.S3.get_object(state.key)
     |> @aws_client.request(region: state.region)
   end
 
-  defp find_latest([_ | _] = contents, key) do
+  defp find_latest([_ | _] = contents) do
     Enum.find(contents, fn
-      %{key: ^key} ->
+      %{is_latest: "true"} ->
         true
 
       _ ->
@@ -122,7 +184,7 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
     end
   end
 
-  defp find_latest(_, _), do: {:error, :not_found}
+  defp find_latest(_), do: {:error, :not_found}
 
   defp decompress(:gzip, body) do
     {:ok, :zlib.gunzip(body)}

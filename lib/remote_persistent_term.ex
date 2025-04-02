@@ -6,6 +6,7 @@ defmodule RemotePersistentTerm do
 
   `use` this module to define a GenServer that will manage the state of your fetcher and keep your term up to date.
   """
+  alias Code.Identifier
   alias RemotePersistentTerm.Fetcher
   require Logger
 
@@ -61,13 +62,18 @@ defmodule RemotePersistentTerm do
     ]
   ]
 
+  @type identifiers :: %{
+          etag: String.t(),
+          version: String.t()
+        }
+
   @type t :: %__MODULE__{
           fetcher_mod: module(),
           fetcher_state: term(),
           refresh_interval: pos_integer(),
-          current_version: String.t()
+          current_identifiers: identifiers()
         }
-  defstruct [:fetcher_mod, :fetcher_state, :refresh_interval, :current_version, :name]
+  defstruct [:fetcher_mod, :fetcher_state, :refresh_interval, :current_identifiers, :name]
 
   @doc """
   Define a GenServer that will manage this specific persistent_term.
@@ -159,7 +165,7 @@ defmodule RemotePersistentTerm do
       def update, do: GenServer.cast(__MODULE__, :update)
 
       defp do_update_term(state) do
-        version =
+        identifiers =
           RemotePersistentTerm.update_term(
             state,
             &deserialize/1,
@@ -168,7 +174,7 @@ defmodule RemotePersistentTerm do
 
         RemotePersistentTerm.schedule_update(self(), state.refresh_interval)
 
-        %{state | current_version: version}
+        %{state | current_identifiers: identifiers}
       end
 
       defp name(opts) do
@@ -229,21 +235,24 @@ defmodule RemotePersistentTerm do
       start_meta,
       fn ->
         {status, version} =
-          with {:ok, current_version} <- state.fetcher_mod.current_version(state.fetcher_state),
-               true <- state.current_version != current_version,
-               :ok <- download_and_store_term(state, deserialize_fun, put_fun) do
-            {:updated, current_version}
+          with {:ok, new_identifiers} <-
+                 state.fetcher_mod.current_identifiers(state.fetcher_state),
+               true <- new_version?(state.current_identifiers, new_identifiers),
+               true <- new_etag?(state.current_identifiers, new_identifiers),
+               {:ok, identifiers} <-
+                 download_and_store_term(state, deserialize_fun, put_fun, new_identifiers) do
+            {:updated, identifiers}
           else
             false ->
               Logger.info("#{state.name} - up to date")
-              {:not_updated, state.current_version}
+              {:not_updated, state.current_identifiers}
 
             {:error, reason} ->
               Logger.error(
                 "#{state.name} - failed to update remote term, reason: #{inspect(reason)}"
               )
 
-              {:not_updated, state.current_version}
+              {:not_updated, state.current_identifiers}
           end
 
         {version, Map.put(start_meta, :status, status)}
@@ -266,10 +275,31 @@ defmodule RemotePersistentTerm do
   @doc false
   def validate_options(opts), do: NimbleOptions.validate(opts, @opts_schema)
 
-  defp download_and_store_term(state, deserialize_fun, put_fun) do
-    with {:ok, term} <- state.fetcher_mod.download(state.fetcher_state),
-         {:ok, deserialized} <- deserialize_fun.(term) do
-      put_fun.(deserialized)
+  defp download_and_store_term(state, deserialize_fun, put_fun, %{version: version} = identifiers) do
+    with {:ok, term} <- state.fetcher_mod.download(state.fetcher_state, version),
+         {:ok, deserialized} <- deserialize_fun.(term),
+         :ok <- put_fun.(deserialized) do
+      {:ok, identifiers}
+    else
+      e ->
+        case state.fetcher_mod.retry(state.fetcher_state, version) do
+          {:retry_new_version, new_identifiers} ->
+            download_and_store_term(state, deserialize_fun, put_fun, new_identifiers)
+
+          :retry ->
+            download_and_store_term(state, deserialize_fun, put_fun, identifiers)
+
+          :continue ->
+            e
+        end
     end
   end
+
+  defp new_version?(%{version: old_version}, %{version: new_version}),
+    do: new_version != old_version
+
+  defp new_version?(_, _), do: true
+
+  defp new_etag?(%{etag: old_etag}, %{etag: new_etag}), do: new_etag != old_etag
+  defp new_etag?(_, _), do: true
 end

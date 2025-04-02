@@ -9,7 +9,12 @@ defmodule RemotePersistentTerm.Fetcher do
   """
   @type state :: term()
   @type opts :: Keyword.t()
+  @type etag :: String.t()
   @type version :: String.t()
+  @type identifiers :: %{
+          etag: etag(),
+          version: version()
+        }
 
   @doc """
   Initialize the implementation specific state of the Fetcher.
@@ -20,10 +25,15 @@ defmodule RemotePersistentTerm.Fetcher do
   Check the current version of the remote term. Used to avoid downloading the
   same term multiple times.
   """
-  @callback current_version(state()) :: {:ok, version()} | {:error, term()}
+  @callback current_identifiers(state()) :: {:ok, identifiers()} | {:error, term()}
 
   @doc """
   Download the term from the remote source.
   """
-  @callback download(state()) :: {:ok, term()} | {:error, term()}
+  @callback download(state(), version()) :: {:ok, term()} | {:error, term()}
+
+  @doc """
+  Logic for whether the request be retried.
+  """
+  @callback retry(state(), version()) :: {:retry_new_version, version()} | :retry | :continue
 end

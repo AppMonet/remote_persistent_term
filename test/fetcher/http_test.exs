@@ -14,8 +14,8 @@ defmodule RemotePersistentTerm.Fetcher.HttpTest do
     end)
 
     {:ok, state} = Http.init(url: "#{c.url}/ping")
-    assert {:ok, "pong"} == Http.download(state)
-    assert {:ok, "pong"} == Http.download(state)
+    assert {:ok, "pong"} == Http.download(state, version())
+    assert {:ok, "pong"} == Http.download(state, version())
   end
 
   test "An error code should result in an error", c do
@@ -24,7 +24,7 @@ defmodule RemotePersistentTerm.Fetcher.HttpTest do
     end)
 
     {:ok, state} = Http.init(url: "#{c.url}/ping")
-    assert {:error, _} = Http.download(state)
+    assert {:error, _} = Http.download(state, version())
   end
 
   test "Should schedule the next update if http_cache is enabled", c do
@@ -36,7 +36,7 @@ defmodule RemotePersistentTerm.Fetcher.HttpTest do
     {:ok, state} =
       Http.init(url: "#{c.url}/ping", http_cache: [enabled?: true, min_refresh_interval_ms: 0])
 
-    assert {:ok, "pong"} == Http.download(state)
+    assert {:ok, "pong"} == Http.download(state, version())
 
     # this signifies that we are scheduling the next update
     assert_receive :update
@@ -50,8 +50,12 @@ defmodule RemotePersistentTerm.Fetcher.HttpTest do
 
     # the cache should be disabled by default
     {:ok, state} = Http.init(url: "#{c.url}/ping")
-    assert {:ok, "pong"} == Http.download(state)
+    assert {:ok, "pong"} == Http.download(state, version())
 
     refute_receive :update
+  end
+
+  defp version do
+    DateTime.utc_now() |> DateTime.to_string()
   end
 end
