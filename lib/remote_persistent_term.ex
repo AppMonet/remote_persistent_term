@@ -103,7 +103,8 @@ defmodule RemotePersistentTerm do
       @behaviour RemotePersistentTerm
 
       def start_link(opts) do
-        with {:ok, valid_opts} <- RemotePersistentTerm.validate_options(opts) do
+        with {:ok, valid_opts} <- RemotePersistentTerm.validate_options(opts),
+             :ok <- setup(valid_opts) do
           GenServer.start_link(__MODULE__, valid_opts, name: __MODULE__)
         end
       end
@@ -142,6 +143,10 @@ defmodule RemotePersistentTerm do
       def handle_info(:update, state) do
         {:noreply, do_update_term(state)}
       end
+
+      @impl RemotePersistentTerm
+      def setup(_opts), do: :ok
+      defoverridable setup: 1
 
       @impl RemotePersistentTerm
       def get, do: :persistent_term.get(__MODULE__, nil)
@@ -219,6 +224,20 @@ defmodule RemotePersistentTerm do
     ```
   """
   @callback deserialize(term()) :: {:ok, term()} | {:error, term()}
+
+  @doc """
+  An optional, overridable callback that is executed during `start_link/1`.
+
+  Receives the validated options passed to `start_link/1` and can be used to set up
+  any additional state.
+
+  For example, if your term is large and expected to change often, you might want to
+  consider storing it in a different backend like `:ets`.
+
+  This can be achieved by overidding `setup/1`, `put/1` and defining a custom `get/1` function
+  in your module.
+  """
+  @callback setup(opts :: Keyword.t()) :: :ok | {:error, term()}
 
   @doc false
   def update_term(state, deserialize_fun, put_fun) do
