@@ -41,6 +41,7 @@ defmodule RemotePersistentTerm.Fetcher.S3Test do
   describe "download/2" do
     test "downloads specific version when version is provided" do
       specific_version = "specific-version-123"
+
       expect(AwsClientMock, :request, fn op, opts ->
         assert op.params == %{"versionId" => specific_version}
         assert opts == [region: @region]
@@ -134,7 +135,6 @@ defmodule RemotePersistentTerm.Fetcher.S3Test do
         %{version_id: @version, etag: "current-etag", is_latest: "false"}
       ]
 
-      # Mock the AWS client request to return the versions
       expect(AwsClientMock, :request, fn _op, _opts ->
         {:ok, %{body: %{versions: versions}}}
       end)

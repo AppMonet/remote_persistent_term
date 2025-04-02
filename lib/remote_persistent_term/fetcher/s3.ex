@@ -12,9 +12,17 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
           key: String.t(),
           region: String.t(),
           compression: atom() | nil,
+          failover_region: String.t() | nil,
           fallback_to_previous_version?: boolean()
         }
-  defstruct [:bucket, :key, :region, :compression, :fallback_to_previous_version?]
+  defstruct [
+    :bucket,
+    :key,
+    :region,
+    :compression,
+    :failover_region,
+    :fallback_to_previous_version?
+  ]
 
   @opts_schema [
     bucket: [
@@ -37,13 +45,26 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
       required: false,
       doc: "The compression algorithm used to compress the remote term."
     ],
-    fallback_to_previous_version?: [
-      type: :boolean,
+    retry: [
+      type: :keyword_list,
       required: false,
-      default: false,
-      doc: "Whether to fallback to a previous version of the S3 object if deserialization fails."
+      default: [],
+      doc: "Options for retry behavior when fetching fails.",
+      keys: [
+        failover_region: [
+          type: :string,
+          required: false,
+          doc: "The AWS region to use if downloading from the default region fails."
+        ],
+        fallback_to_previous_version?: [
+          type: :boolean,
+          required: false,
+          default: false,
+          doc:
+            "Whether to fallback to a previous version of the S3 object if deserialization fails."
+        ]
+      ]
     ]
-    # todo add fallback to other region
   ]
 
   @doc """
@@ -61,13 +82,16 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
   @impl true
   def init(opts) do
     with {:ok, valid_opts} <- NimbleOptions.validate(opts, @opts_schema) do
+      retry = Keyword.get(valid_opts, :retry, [])
+
       {:ok,
        %__MODULE__{
          bucket: valid_opts[:bucket],
          key: valid_opts[:key],
          region: valid_opts[:region],
          compression: valid_opts[:compression],
-         fallback_to_previous_version?: valid_opts[:fallback_to_previous_version?]
+         failover_region: retry[:failover_region],
+         fallback_to_previous_version?: retry[:fallback_to_previous_version?]
        }}
     end
   end
@@ -151,7 +175,7 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
     res =
       state.bucket
       |> ExAws.S3.get_bucket_object_versions(prefix: state.key)
-      |> @aws_client.request(region: state.region)
+      |> aws_client_request(state)
 
     with {:ok, %{body: %{versions: versions}}} <- res do
       {:ok, versions}
@@ -161,13 +185,13 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
   defp get_object(state, version) when is_binary(version) do
     state.bucket
     |> ExAws.S3.get_object(state.key, version_id: version)
-    |> @aws_client.request(region: state.region)
+    |> aws_client_request(state)
   end
 
   defp get_object(state, _) do
     state.bucket
     |> ExAws.S3.get_object(state.key)
-    |> @aws_client.request(region: state.region)
+    |> aws_client_request(state)
   end
 
   defp find_latest([_ | _] = contents) do
@@ -193,4 +217,16 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
   end
 
   defp decompress(nil, body), do: {:ok, body}
+
+  defp aws_client_request(op, %{region: region, failover_region: nil}),
+    do: @aws_client.request(op, region: region)
+
+  defp aws_client_request(op, %{region: region, failover_region: failover_region}) do
+    with {:error, reason} <- @aws_client.request(op, region: region) do
+      Logger.error(
+        "Failed to fetch from primary region #{region}: #{inspect(reason)}, will try failover region #{failover_region}"
+      )
+      @aws_client.request(op, region: failover_region)
+    end
+  end
 end
