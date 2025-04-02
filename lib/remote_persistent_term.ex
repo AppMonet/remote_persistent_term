@@ -6,7 +6,6 @@ defmodule RemotePersistentTerm do
 
   `use` this module to define a GenServer that will manage the state of your fetcher and keep your term up to date.
   """
-  alias Code.Identifier
   alias RemotePersistentTerm.Fetcher
   require Logger
 
