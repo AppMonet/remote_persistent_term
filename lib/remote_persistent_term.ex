@@ -58,6 +58,17 @@ defmodule RemotePersistentTerm do
       An alias for this term. A value will be generated based on the module \
       name if no value is provided. Used for Telemetry events.
       """
+    ],
+    auto_decompress?: [
+      type: :boolean,
+      required: false,
+      default: true,
+      doc: """
+      Automatidally decompress the term after downloading it if known magic bytes of a \
+      supported format are encountered.
+
+      Currently only supports gzip (0x1F, 0x8B).
+      """
     ]
   ]
 
@@ -65,9 +76,17 @@ defmodule RemotePersistentTerm do
           fetcher_mod: module(),
           fetcher_state: term(),
           refresh_interval: pos_integer(),
-          current_version: String.t()
+          current_version: String.t(),
+          auto_decompress?: boolean()
         }
-  defstruct [:fetcher_mod, :fetcher_state, :refresh_interval, :current_version, :name]
+  defstruct [
+    :fetcher_mod,
+    :fetcher_state,
+    :refresh_interval,
+    :current_version,
+    :name,
+    :auto_decompress?
+  ]
 
   @doc """
   Define a GenServer that will manage this specific persistent_term.
@@ -118,7 +137,8 @@ defmodule RemotePersistentTerm do
             fetcher_mod: fetcher_mod,
             fetcher_state: fetcher_state,
             refresh_interval: opts[:refresh_interval],
-            name: name(opts)
+            name: name(opts),
+            auto_decompress?: opts[:auto_decompress?]
           }
 
           if opts[:lazy_init?] do
@@ -287,8 +307,27 @@ defmodule RemotePersistentTerm do
 
   defp download_and_store_term(state, deserialize_fun, put_fun) do
     with {:ok, term} <- state.fetcher_mod.download(state.fetcher_state),
-         {:ok, deserialized} <- deserialize_fun.(term) do
+         {:ok, decompressed} <- maybe_decompress(state, term),
+         {:ok, deserialized} <- deserialize_fun.(decompressed) do
       put_fun.(deserialized)
     end
+  end
+
+  defp maybe_decompress(%__MODULE__{auto_decompress?: true}, body) do
+    case body do
+      <<0x1F, 0x8B, _rest::binary>> = gzipped ->
+        gunzip(gzipped)
+
+      _ ->
+        {:ok, body}
+    end
+  end
+
+  defp maybe_decompress(_, body), do: {:ok, body}
+
+  defp gunzip(body) do
+    {:ok, :zlib.gunzip(body)}
+  rescue
+    e -> {:error, {"invalid gzip data", e}}
   end
 end

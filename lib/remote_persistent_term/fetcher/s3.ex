@@ -5,15 +5,13 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
   require Logger
 
   @behaviour RemotePersistentTerm.Fetcher
-  @aws_client Application.compile_env(:remote_persistent_term, :aws_client, ExAws)
 
   @type t :: %__MODULE__{
           bucket: String.t(),
           key: String.t(),
-          region: String.t(),
-          compression: atom() | nil
+          region: String.t()
         }
-  defstruct [:bucket, :key, :region, :compression]
+  defstruct [:bucket, :key, :region]
 
   @opts_schema [
     bucket: [
@@ -30,11 +28,6 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
       type: :string,
       required: true,
       doc: "The AWS region of the s3 bucket."
-    ],
-    compression: [
-      type: {:in, [:gzip]},
-      required: false,
-      doc: "The compression algorithm used to compress the remote term."
     ]
   ]
 
@@ -57,8 +50,7 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
        %__MODULE__{
          bucket: valid_opts[:bucket],
          key: valid_opts[:key],
-         region: valid_opts[:region],
-         compression: valid_opts[:compression]
+         region: valid_opts[:region]
        }}
     end
   end
@@ -86,10 +78,9 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
   def download(state) do
     Logger.info("downloading s3://#{state.bucket}/#{state.key}...")
 
-    with {:ok, %{body: body}} <- get_object(state),
-         _ <- Logger.debug("downloaded s3://#{state.bucket}/#{state.key}!"),
-         {:ok, decompressed} <- decompress(state.compression, body) do
-      {:ok, decompressed}
+    with {:ok, %{body: body}} <- get_object(state) do
+      Logger.debug("downloaded s3://#{state.bucket}/#{state.key}!")
+      {:ok, body}
     else
       {:error, reason} ->
         {:error, inspect(reason)}
@@ -99,13 +90,13 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
   defp list_objects(state) do
     state.bucket
     |> ExAws.S3.list_objects()
-    |> @aws_client.request(region: state.region)
+    |> client().request(region: state.region)
   end
 
   defp get_object(state) do
     state.bucket
     |> ExAws.S3.get_object(state.key)
-    |> @aws_client.request(region: state.region)
+    |> client().request(region: state.region)
   end
 
   defp find_latest([_ | _] = contents, key) do
@@ -124,11 +115,5 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
 
   defp find_latest(_, _), do: {:error, :not_found}
 
-  defp decompress(:gzip, body) do
-    {:ok, :zlib.gunzip(body)}
-  rescue
-    e -> {:error, {"invalid gzip data", e}}
-  end
-
-  defp decompress(nil, body), do: {:ok, body}
+  defp client, do: Application.get_env(:remote_persistent_term, :aws_client, ExAws)
 end
