@@ -108,7 +108,6 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
   end
 
   defp find_latest([_ | _] = contents) do
-    dbg contents
     Enum.find(contents, fn
       %{is_latest: "true"} ->
         true
