@@ -45,6 +45,7 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
   """
   @impl true
   def init(opts) do
+    IO.inspect(Application.get_all_env(:ex_aws), label: "ExAws Config")
     with {:ok, valid_opts} <- NimbleOptions.validate(opts, @opts_schema) do
       {:ok,
        %__MODULE__{
@@ -113,7 +114,7 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
       %{is_latest: "true"} ->
         true
 
-      %{is_latest: "false"} ->
+      _ ->
         false
     end)
     |> case do
