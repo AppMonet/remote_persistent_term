@@ -57,9 +57,12 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
 
   @impl true
   def current_version(state) do
-    with {:ok, %{body: %{contents: contents}}} <- list_objects(state),
-         {:ok, %{e_tag: etag}} <- find_latest(contents, state.key) do
-      Logger.info("found latest version of s3://#{state.bucket}/#{state.key}: #{etag}")
+    with {:ok, versions} <- list_object_versions(state),
+         {:ok, %{etag: etag, version_id: version}} <- find_latest(versions) do
+      Logger.info(
+        "found latest version of s3://#{state.bucket}/#{state.key}: #{etag} with version: #{version}"
+      )
+
       {:ok, etag}
     else
       {:error, {:unexpected_response, %{body: reason}}} ->
@@ -87,21 +90,26 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
     end
   end
 
-  defp list_objects(state) do
-    state.bucket
-    |> ExAws.S3.list_objects()
-    |> client().request(region: state.region)
+  defp list_object_versions(state) do
+    res =
+      state.bucket
+      |> ExAws.S3.get_bucket_object_versions(prefix: state.key)
+      |> aws_client_request(state.region)
+
+    with {:ok, %{body: %{versions: versions}}} <- res do
+      {:ok, versions}
+    end
   end
 
   defp get_object(state) do
     state.bucket
     |> ExAws.S3.get_object(state.key)
-    |> client().request(region: state.region)
+    |> aws_client_request(state.region)
   end
 
-  defp find_latest([_ | _] = contents, key) do
+  defp find_latest([_ | _] = contents) do
     Enum.find(contents, fn
-      %{key: ^key} ->
+      %{is_latest: "true"} ->
         true
 
       _ ->
@@ -113,7 +121,11 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
     end
   end
 
-  defp find_latest(_, _), do: {:error, :not_found}
+  defp find_latest(_), do: {:error, :not_found}
+
+  defp aws_client_request(op, region) do
+    client().request(op, region: region)
+  end
 
   defp client, do: Application.get_env(:remote_persistent_term, :aws_client, ExAws)
 end
