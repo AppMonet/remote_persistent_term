@@ -10,9 +10,9 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
           bucket: String.t(),
           key: String.t(),
           region: String.t(),
-          failover_region: String.t() | nil
+          failover_regions: [String.t()] | nil
         }
-  defstruct [:bucket, :key, :region, :failover_region]
+  defstruct [:bucket, :key, :region, :failover_regions]
 
   @opts_schema [
     bucket: [
@@ -30,10 +30,11 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
       required: true,
       doc: "The AWS region of the s3 bucket."
     ],
-    failover_region: [
-      type: :string,
+    failover_regions: [
+      type: {:list, :string},
       required: false,
-      doc: "The AWS region to use if calls to the default region fail."
+      doc:
+        "A list of AWS regions to use if calls to the default region fail. They will be tried in order."
     ]
   ]
 
@@ -57,7 +58,7 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
          bucket: valid_opts[:bucket],
          key: valid_opts[:key],
          region: valid_opts[:region],
-         failover_region: valid_opts[:failover_region]
+         failover_regions: valid_opts[:failover_regions]
        }}
     end
   end
@@ -130,16 +131,32 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
 
   defp find_latest(_), do: {:error, :not_found}
 
-  defp aws_client_request(op, %{region: region, failover_region: nil}),
+  defp aws_client_request(op, %{region: region, failover_regions: nil}),
     do: client().request(op, region: region)
 
-  defp aws_client_request(op, %{region: region, failover_region: failover_region}) do
+  defp aws_client_request(op, %{region: region, failover_regions: failover_regions})
+       when is_list(failover_regions) do
     with {:error, reason} <- client().request(op, region: region) do
       Logger.error(
-        "Failed to fetch from primary region #{region}: #{inspect(reason)}, will try failover region #{failover_region}"
+        "Failed to fetch from primary region #{region}: #{inspect(reason)}, will try failover regions"
       )
 
-      client().request(op, region: failover_region)
+      try_failover_regions(op, failover_regions)
+    end
+  end
+
+  defp try_failover_regions(_op, []), do: {:error, "All regions failed"}
+
+  defp try_failover_regions(op, [region | remaining_regions]) do
+    Logger.info("Trying failover region: #{region}")
+
+    case client().request(op, region: region) do
+      {:ok, result} ->
+        {:ok, result}
+
+      {:error, reason} ->
+        Logger.error("Failed to fetch from failover region #{region}: #{inspect(reason)}")
+        try_failover_regions(op, remaining_regions)
     end
   end
 
