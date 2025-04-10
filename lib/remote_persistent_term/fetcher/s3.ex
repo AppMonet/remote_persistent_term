@@ -9,9 +9,10 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
   @type t :: %__MODULE__{
           bucket: String.t(),
           key: String.t(),
-          region: String.t()
+          region: String.t(),
+          failover_regions: [String.t()] | nil
         }
-  defstruct [:bucket, :key, :region]
+  defstruct [:bucket, :key, :region, :failover_regions]
 
   @opts_schema [
     bucket: [
@@ -28,6 +29,12 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
       type: :string,
       required: true,
       doc: "The AWS region of the s3 bucket."
+    ],
+    failover_regions: [
+      type: {:list, :string},
+      required: false,
+      doc:
+        "A list of AWS regions to use if calls to the default region fail. They will be tried in order."
     ]
   ]
 
@@ -50,7 +57,8 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
        %__MODULE__{
          bucket: valid_opts[:bucket],
          key: valid_opts[:key],
-         region: valid_opts[:region]
+         region: valid_opts[:region],
+         failover_regions: valid_opts[:failover_regions]
        }}
     end
   end
@@ -94,7 +102,7 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
     res =
       state.bucket
       |> ExAws.S3.get_bucket_object_versions(prefix: state.key)
-      |> aws_client_request(state.region)
+      |> aws_client_request(state)
 
     with {:ok, %{body: %{versions: versions}}} <- res do
       {:ok, versions}
@@ -104,7 +112,7 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
   defp get_object(state) do
     state.bucket
     |> ExAws.S3.get_object(state.key)
-    |> aws_client_request(state.region)
+    |> aws_client_request(state)
   end
 
   defp find_latest([_ | _] = contents) do
@@ -123,8 +131,33 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
 
   defp find_latest(_), do: {:error, :not_found}
 
-  defp aws_client_request(op, region) do
-    client().request(op, region: region)
+  defp aws_client_request(op, %{region: region, failover_regions: nil}),
+    do: client().request(op, region: region)
+
+  defp aws_client_request(op, %{region: region, failover_regions: failover_regions})
+       when is_list(failover_regions) do
+    with {:error, reason} <- client().request(op, region: region) do
+      Logger.error(
+        "Failed to fetch from primary region #{region}: #{inspect(reason)}, will try failover regions"
+      )
+
+      try_failover_regions(op, failover_regions)
+    end
+  end
+
+  defp try_failover_regions(_op, []), do: {:error, "All regions failed"}
+
+  defp try_failover_regions(op, [region | remaining_regions]) do
+    Logger.info("Trying failover region: #{region}")
+
+    case client().request(op, region: region) do
+      {:ok, result} ->
+        {:ok, result}
+
+      {:error, reason} ->
+        Logger.error("Failed to fetch from failover region #{region}: #{inspect(reason)}")
+        try_failover_regions(op, remaining_regions)
+    end
   end
 
   defp client, do: Application.get_env(:remote_persistent_term, :aws_client, ExAws)
