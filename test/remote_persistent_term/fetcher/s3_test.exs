@@ -17,9 +17,9 @@ defmodule RemotePersistentTerm.Fetcher.S3Test do
     end)
 
     assert capture_log(fn ->
-             assert {:error, "Unknown error"} = S3.current_version(%S3{bucket: "bucket"})
+             assert {:error, "Unknown error"} = S3.current_version(%S3{bucket: "bucket", key: "key"})
            end) =~
-             "Elixir.RemotePersistentTerm.Fetcher.S3 - unknown error: :unknown_error"
+             "Elixir.RemotePersistentTerm.Fetcher.S3 - s3://bucket/key - unknown error: :unknown_error"
   end
 
   describe "init/1" do
@@ -67,9 +67,9 @@ defmodule RemotePersistentTerm.Fetcher.S3Test do
           assert {:ok, "current-etag"} = result
         end)
 
-      assert log =~ "Failed to fetch from primary region #{@region}"
+      assert log =~ "s3://#{@bucket}/#{@key} - Failed to fetch from primary region #{@region}"
       assert log =~ "will try failover regions"
-      assert log =~ "Trying failover region: failover-region-1"
+      assert log =~ "s3://#{@bucket}/#{@key} - Trying failover region: failover-region-1"
     end
 
     test "download/1 tries first failover region when primary region fails" do
@@ -97,9 +97,9 @@ defmodule RemotePersistentTerm.Fetcher.S3Test do
           assert {:ok, "content from failover region"} = result
         end)
 
-      assert log =~ "Failed to fetch from primary region #{@region}"
+      assert log =~ "s3://#{@bucket}/#{@key} - Failed to fetch from primary region #{@region}"
       assert log =~ "will try failover regions"
-      assert log =~ "Trying failover region: failover-region-1"
+      assert log =~ "s3://#{@bucket}/#{@key} - Trying failover region: failover-region-1"
     end
 
     test "returns error when primary and all failover regions fail" do
@@ -131,12 +131,12 @@ defmodule RemotePersistentTerm.Fetcher.S3Test do
           assert message =~ "All regions failed"
         end)
 
-      assert log =~ "Failed to fetch from primary region #{@region}"
+      assert log =~ "s3://#{@bucket}/#{@key} - Failed to fetch from primary region #{@region}"
       assert log =~ "will try failover regions"
-      assert log =~ "Trying failover region: failover-region-1"
-      assert log =~ "Failed to fetch from failover region failover-region-1"
-      assert log =~ "Trying failover region: failover-region-2"
-      assert log =~ "Failed to fetch from failover region failover-region-2"
+      assert log =~ "s3://#{@bucket}/#{@key} - Trying failover region: failover-region-1"
+      assert log =~ "s3://#{@bucket}/#{@key} - Failed to fetch from failover region failover-region-1"
+      assert log =~ "s3://#{@bucket}/#{@key} - Trying failover region: failover-region-2"
+      assert log =~ "s3://#{@bucket}/#{@key} - Failed to fetch from failover region failover-region-2"
     end
 
     test "tries second failover region when first failover region fails" do
@@ -167,10 +167,10 @@ defmodule RemotePersistentTerm.Fetcher.S3Test do
           assert {:ok, "content from second failover region"} = result
         end)
 
-      assert log =~ "Failed to fetch from primary region #{@region}"
-      assert log =~ "Trying failover region: failover-region-1"
-      assert log =~ "Failed to fetch from failover region failover-region-1"
-      assert log =~ "Trying failover region: failover-region-2"
+      assert log =~ "s3://#{@bucket}/#{@key} - Failed to fetch from primary region #{@region}"
+      assert log =~ "s3://#{@bucket}/#{@key} - Trying failover region: failover-region-1"
+      assert log =~ "s3://#{@bucket}/#{@key} - Failed to fetch from failover region failover-region-1"
+      assert log =~ "s3://#{@bucket}/#{@key} - Trying failover region: failover-region-2"
     end
   end
 end

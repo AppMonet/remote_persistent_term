@@ -80,7 +80,7 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
         {:error, "could not find s3://#{state.bucket}/#{state.key}"}
 
       {:error, reason} ->
-        Logger.error("#{__MODULE__} - unknown error: #{inspect(reason)}")
+        Logger.error("#{__MODULE__} - s3://#{state.bucket}/#{state.key} - unknown error: #{inspect(reason)}")
         {:error, "Unknown error"}
     end
   end
@@ -134,29 +134,29 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
   defp aws_client_request(op, %{region: region, failover_regions: nil}),
     do: client().request(op, region: region)
 
-  defp aws_client_request(op, %{region: region, failover_regions: failover_regions})
+  defp aws_client_request(op, %{region: region, bucket: bucket, key: key, failover_regions: failover_regions})
        when is_list(failover_regions) do
     with {:error, reason} <- client().request(op, region: region) do
       Logger.error(
-        "Failed to fetch from primary region #{region}: #{inspect(reason)}, will try failover regions"
+        "s3://#{bucket}/#{key} - Failed to fetch from primary region #{region}: #{inspect(reason)}, will try failover regions"
       )
 
-      try_failover_regions(op, failover_regions)
+      try_failover_regions(op, failover_regions, bucket, key)
     end
   end
 
-  defp try_failover_regions(_op, []), do: {:error, "All regions failed"}
+  defp try_failover_regions(_op, [], _bucket, _key), do: {:error, "All regions failed"}
 
-  defp try_failover_regions(op, [region | remaining_regions]) do
-    Logger.info("Trying failover region: #{region}")
+  defp try_failover_regions(op, [region | remaining_regions], bucket, key) do
+    Logger.info("s3://#{bucket}/#{key} - Trying failover region: #{region}")
 
     case client().request(op, region: region) do
       {:ok, result} ->
         {:ok, result}
 
       {:error, reason} ->
-        Logger.error("Failed to fetch from failover region #{region}: #{inspect(reason)}")
-        try_failover_regions(op, remaining_regions)
+        Logger.error("s3://#{bucket}/#{key} - Failed to fetch from failover region #{region}: #{inspect(reason)}")
+        try_failover_regions(op, remaining_regions, bucket, key)
     end
   end
 
