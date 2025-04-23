@@ -16,10 +16,16 @@ defmodule RemotePersistentTerm.Fetcher.S3Test do
       {:error, :unknown_error}
     end)
 
-    assert capture_log(fn ->
-             assert {:error, "Unknown error"} = S3.current_version(%S3{bucket: "bucket", key: "key"})
-           end) =~
-             "Elixir.RemotePersistentTerm.Fetcher.S3 - s3://bucket/key - unknown error: :unknown_error"
+    log =
+      capture_log(fn ->
+        assert {:error, "Unknown error"} =
+                 S3.current_version(%S3{bucket: "bucket", key: "key"})
+      end)
+
+    assert log =~ "bucket: \"bucket\""
+    assert log =~ "key: \"key\""
+    assert log =~ "reason: \":unknown_error\""
+    assert log =~ "Failed to get current version of object - unknown reason"
   end
 
   describe "init/1" do
@@ -67,9 +73,13 @@ defmodule RemotePersistentTerm.Fetcher.S3Test do
           assert {:ok, "current-etag"} = result
         end)
 
-      assert log =~ "s3://#{@bucket}/#{@key} - Failed to fetch from primary region #{@region}"
-      assert log =~ "will try failover regions"
-      assert log =~ "s3://#{@bucket}/#{@key} - Trying failover region: failover-region-1"
+      assert log =~ "bucket: \"#{@bucket}\""
+      assert log =~ "key: \"#{@key}\""
+      assert log =~ "region: \"#{@region}\""
+      assert log =~ "Failed to fetch from primary region, attempting failover regions"
+      assert log =~ "region: \"failover-region-1\""
+      assert log =~ "Trying failover region"
+      assert log =~ "Found latest version of object with version: #{@version}"
     end
 
     test "download/1 tries first failover region when primary region fails" do
@@ -97,9 +107,14 @@ defmodule RemotePersistentTerm.Fetcher.S3Test do
           assert {:ok, "content from failover region"} = result
         end)
 
-      assert log =~ "s3://#{@bucket}/#{@key} - Failed to fetch from primary region #{@region}"
-      assert log =~ "will try failover regions"
-      assert log =~ "s3://#{@bucket}/#{@key} - Trying failover region: failover-region-1"
+      assert log =~ "bucket: \"#{@bucket}\""
+      assert log =~ "key: \"#{@key}\""
+      assert log =~ "Downloading object from S3"
+      assert log =~ "region: \"#{@region}\""
+      assert log =~ "Failed to fetch from primary region, attempting failover regions"
+      assert log =~ "region: \"failover-region-1\""
+      assert log =~ "Trying failover region"
+      assert log =~ "Downloaded object from S3"
     end
 
     test "returns error when primary and all failover regions fail" do
@@ -131,12 +146,17 @@ defmodule RemotePersistentTerm.Fetcher.S3Test do
           assert message =~ "All regions failed"
         end)
 
-      assert log =~ "s3://#{@bucket}/#{@key} - Failed to fetch from primary region #{@region}"
-      assert log =~ "will try failover regions"
-      assert log =~ "s3://#{@bucket}/#{@key} - Trying failover region: failover-region-1"
-      assert log =~ "s3://#{@bucket}/#{@key} - Failed to fetch from failover region failover-region-1"
-      assert log =~ "s3://#{@bucket}/#{@key} - Trying failover region: failover-region-2"
-      assert log =~ "s3://#{@bucket}/#{@key} - Failed to fetch from failover region failover-region-2"
+      assert log =~ "bucket: \"#{@bucket}\""
+      assert log =~ "key: \"#{@key}\""
+      assert log =~ "Downloading object from S3"
+      assert log =~ "region: \"#{@region}\""
+      assert log =~ "Failed to fetch from primary region, attempting failover regions"
+      assert log =~ "region: \"failover-region-1\""
+      assert log =~ "Trying failover region"
+      assert log =~ "reason: \"\\\"First failover region connection error\\\"\""
+      assert log =~ "Failed to fetch from failover region"
+      assert log =~ "region: \"failover-region-2\""
+      assert log =~ "reason: \"\\\"Second failover region connection error\\\"\""
     end
 
     test "tries second failover region when first failover region fails" do
@@ -167,10 +187,17 @@ defmodule RemotePersistentTerm.Fetcher.S3Test do
           assert {:ok, "content from second failover region"} = result
         end)
 
-      assert log =~ "s3://#{@bucket}/#{@key} - Failed to fetch from primary region #{@region}"
-      assert log =~ "s3://#{@bucket}/#{@key} - Trying failover region: failover-region-1"
-      assert log =~ "s3://#{@bucket}/#{@key} - Failed to fetch from failover region failover-region-1"
-      assert log =~ "s3://#{@bucket}/#{@key} - Trying failover region: failover-region-2"
+      assert log =~ "bucket: \"#{@bucket}\""
+      assert log =~ "key: \"#{@key}\""
+      assert log =~ "Downloading object from S3"
+      assert log =~ "region: \"#{@region}\""
+      assert log =~ "Failed to fetch from primary region, attempting failover regions"
+      assert log =~ "region: \"failover-region-1\""
+      assert log =~ "Trying failover region"
+      assert log =~ "reason: \"\\\"First failover region connection error\\\"\""
+      assert log =~ "Failed to fetch from failover region"
+      assert log =~ "region: \"failover-region-2\""
+      assert log =~ "Downloaded object from S3"
     end
   end
 end
