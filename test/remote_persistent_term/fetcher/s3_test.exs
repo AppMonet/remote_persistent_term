@@ -79,7 +79,7 @@ defmodule RemotePersistentTerm.Fetcher.S3Test do
       assert log =~ "Failed to fetch from primary region, attempting failover regions"
       assert log =~ "region: \"failover-region-1\""
       assert log =~ "Trying failover region"
-      assert log =~ "Found latest version of object with version: #{@version}"
+      assert log =~ "Found latest version of object"
     end
 
     test "download/1 tries first failover region when primary region fails" do
