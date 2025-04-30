@@ -150,7 +150,7 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
   defp find_latest(_), do: {:error, :not_found}
 
   defp aws_client_request(op, %{failover_buckets: nil} = state, opts) do
-    perform_request(op, state.bucket, opts, state.region)
+    perform_request(op, state.bucket, state.region, opts)
   end
 
   defp aws_client_request(
@@ -161,7 +161,7 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
          opts
        )
        when is_list(failover_buckets) do
-    with {:error, reason} <- perform_request(op, state.bucket, opts, state.region) do
+    with {:error, reason} <- perform_request(op, state.bucket, state.region, opts) do
       Logger.error(%{
         bucket: state.bucket,
         key: state.key,
@@ -184,7 +184,7 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
       message: "Trying failover bucket"
     })
 
-    case perform_request(op, bucket, opts, region) do
+    case perform_request(op, bucket, region, opts) do
       {:ok, result} ->
         {:ok, result}
 
@@ -201,7 +201,7 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
     end
   end
 
-  defp perform_request(op, bucket, opts, region) do
+  defp perform_request(op, bucket, region, opts) do
     op
     |> apply([bucket, opts])
     |> client().request(region: region)
