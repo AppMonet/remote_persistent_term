@@ -2,7 +2,7 @@ defmodule RemotePersistentTerm.MixProject do
   use Mix.Project
 
   @name "RemotePersistentTerm"
-  @version "0.11.0"
+  @version "0.12.0"
   @repo_url "https://github.com/AppMonet/remote_persistent_term"
 
   def project do
@@ -32,7 +32,7 @@ defmodule RemotePersistentTerm.MixProject do
       {:telemetry, "~> 1.0"},
       {:ex_doc, "~> 0.27", only: :dev, runtime: false},
       {:ex_aws, "~> 2.1"},
-      {:ex_aws_s3, "~> 2.0"},
+      {:ex_aws_s3, "~> 2.5.7"},
       {:configparser_ex, "~> 4.0", optional: true},
       {:hackney, "~> 1.9"},
       {:sweet_xml, "~> 0.6"},
