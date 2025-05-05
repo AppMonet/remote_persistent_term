@@ -9,8 +9,8 @@ defmodule RemotePersistentTerm.Fetcher.S3Test do
   @key "test-key"
   @region "test-region"
   @failover_buckets [
-    {"failover-bucket-1", "failover-region-1"},
-    {"failover-bucket-2", "failover-region-2"}
+    [bucket: "failover-bucket-1", region: "failover-region-1"],
+    [bucket: "failover-bucket-2", region: "failover-region-2"]
   ]
   @version "F76V.weh4uOlU15f7a2OLHPgCLXkDpm4"
 
@@ -45,7 +45,11 @@ defmodule RemotePersistentTerm.Fetcher.S3Test do
       bucket = "my-bucket"
       key = "my-key"
       region = "my-region"
-      failover_buckets = [{"backup-bucket", "backup-region"}, {"dr-bucket", "dr-region"}]
+
+      failover_buckets = [
+        [bucket: "backup-bucket", region: "backup-region"],
+        [bucket: "dr-bucket", region: "dr-region"]
+      ]
 
       assert {:ok,
               %S3{bucket: bucket, key: key, region: region, failover_buckets: failover_buckets}} ==

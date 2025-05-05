@@ -10,7 +10,7 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
           bucket: String.t(),
           key: String.t(),
           region: String.t(),
-          failover_buckets: [{String.t(), String.t()}] | nil
+          failover_buckets: [[bucket: String.t(), region: String.t()]] | nil
         }
   defstruct [:bucket, :key, :region, :failover_buckets]
 
@@ -31,10 +31,11 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
       doc: "The AWS region of the s3 bucket."
     ],
     failover_buckets: [
-      type: {:list, {:tuple, [:string, :string]}},
+      type: {:list, :keyword_list},
       required: false,
       doc:
-        "A list of tuples containing {bucket_name, region} to use as failover if the primary bucket fails."
+        "A list of keyword lists containing [bucket: bucket_name, region: region] to use as failover if the primary bucket fails. \n
+        The directory structure in failover buckets must match the primary bucket."
     ]
   ]
 
@@ -176,7 +177,12 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
 
   defp try_failover_buckets(_op, [], _opts, _state), do: {:error, "All buckets failed"}
 
-  defp try_failover_buckets(op, [{bucket, region} | remaining_buckets], opts, state) do
+  defp try_failover_buckets(
+         op,
+         [[bucket: bucket, region: region] | remaining_buckets],
+         opts,
+         state
+       ) do
     Logger.info(%{
       bucket: bucket,
       key: state.key,
@@ -202,8 +208,7 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
   end
 
   defp perform_request(op, bucket, region, opts) do
-    op
-    |> apply([bucket, opts])
+    op.(bucket, opts)
     |> client().request(region: region)
   end
 
