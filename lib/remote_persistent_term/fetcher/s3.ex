@@ -6,13 +6,30 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
 
   @behaviour RemotePersistentTerm.Fetcher
 
+  @type bucket :: String.t()
+  @type region :: String.t()
+  @type failover_bucket :: [bucket: bucket, region: region]
+
   @type t :: %__MODULE__{
-          bucket: String.t(),
+          bucket: bucket,
           key: String.t(),
-          region: String.t(),
-          failover_buckets: [[bucket: String.t(), region: String.t()]] | nil
+          region: region,
+          failover_buckets: [failover_bucket] | nil
         }
   defstruct [:bucket, :key, :region, :failover_buckets]
+
+  @failover_bucket_schema [
+    bucket: [
+      type: :string,
+      required: true,
+      doc: "The name of the failover S3 bucket."
+    ],
+    region: [
+      type: :string,
+      required: true,
+      doc: "The AWS region of the failover S3 bucket."
+    ]
+  ]
 
   @opts_schema [
     bucket: [
@@ -31,10 +48,9 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
       doc: "The AWS region of the s3 bucket."
     ],
     failover_buckets: [
-      type: {:list, :keyword_list},
+      type: {:list, {:keyword_list, @failover_bucket_schema}},
       required: false,
-      doc:
-        "A list of keyword lists containing [bucket: bucket_name, region: region] to use as failover if the primary bucket fails. \n
+      doc: "A list of failover_buckets to use as failover if the primary bucket fails. \n
         The directory structure in failover buckets must match the primary bucket."
     ]
   ]
