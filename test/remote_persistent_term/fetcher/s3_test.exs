@@ -8,7 +8,10 @@ defmodule RemotePersistentTerm.Fetcher.S3Test do
   @bucket "test-bucket"
   @key "test-key"
   @region "test-region"
-  @failover_regions ["failover-region-1", "failover-region-2"]
+  @failover_buckets [
+    [bucket: "failover-bucket-1", region: "failover-region-1"],
+    [bucket: "failover-bucket-2", region: "failover-region-2"]
+  ]
   @version "F76V.weh4uOlU15f7a2OLHPgCLXkDpm4"
 
   test "Unknown error returns an error for current_version/1" do
@@ -37,25 +40,48 @@ defmodule RemotePersistentTerm.Fetcher.S3Test do
       assert {:ok, %S3{bucket: bucket, key: key, region: region}} ==
                S3.init(bucket: bucket, key: key, region: region)
     end
+
+    test "with failover buckets" do
+      bucket = "my-bucket"
+      key = "my-key"
+      region = "my-region"
+
+      failover_buckets = [
+        [bucket: "backup-bucket", region: "backup-region"],
+        [bucket: "dr-bucket", region: "dr-region"]
+      ]
+
+      assert {:ok,
+              %S3{bucket: bucket, key: key, region: region, failover_buckets: failover_buckets}} ==
+               S3.init(
+                 bucket: bucket,
+                 key: key,
+                 region: region,
+                 failover_buckets: failover_buckets
+               )
+    end
   end
 
-  describe "failover_regions" do
-    test "current_identifiers/1 tries first failover region when primary region fails" do
-      # Setup state with failover regions
+  describe "failover_buckets" do
+    test "current_version/1 tries first failover bucket when primary bucket fails" do
+      # Setup state with failover buckets
       state = %S3{
         bucket: @bucket,
         key: @key,
         region: @region,
-        failover_regions: @failover_regions
+        failover_buckets: @failover_buckets
       }
 
-      # Mock the AWS client to fail for primary region but succeed for first failover region
-      expect(AwsClientMock, :request, 2, fn _op, opts ->
-        case opts do
-          [region: @region] ->
-            {:error, "Primary region connection error"}
+      # Mock the AWS client to fail for primary bucket but succeed for first failover bucket
+      expect(AwsClientMock, :request, 2, fn operation, opts ->
+        op_bucket = operation.bucket
+        region = Keyword.get(opts, :region)
 
-          [region: "failover-region-1"] ->
+        cond do
+          op_bucket == @bucket && region == @region ->
+            {:error, "Primary bucket connection error"}
+
+          op_bucket == "failover-bucket-1" && region == "failover-region-1" ->
             {:ok,
              %{
                body: %{
@@ -64,6 +90,9 @@ defmodule RemotePersistentTerm.Fetcher.S3Test do
                  ]
                }
              }}
+
+          true ->
+            {:error, "Unexpected bucket or region"}
         end
       end)
 
@@ -76,66 +105,80 @@ defmodule RemotePersistentTerm.Fetcher.S3Test do
       assert log =~ "bucket: \"#{@bucket}\""
       assert log =~ "key: \"#{@key}\""
       assert log =~ "region: \"#{@region}\""
-      assert log =~ "Failed to fetch from primary region, attempting failover regions"
+      assert log =~ "Failed to fetch from primary bucket, attempting failover buckets"
+      assert log =~ "bucket: \"failover-bucket-1\""
       assert log =~ "region: \"failover-region-1\""
-      assert log =~ "Trying failover region"
+      assert log =~ "Trying failover bucket"
       assert log =~ "Found latest version of object"
     end
 
-    test "download/1 tries first failover region when primary region fails" do
+    test "download/1 tries first failover bucket when primary bucket fails" do
       state = %S3{
         bucket: @bucket,
         key: @key,
         region: @region,
-        failover_regions: @failover_regions
+        failover_buckets: @failover_buckets
       }
 
-      # Mock the AWS client to fail for primary region but succeed for first failover region
-      expect(AwsClientMock, :request, 2, fn _op, opts ->
-        case opts do
-          [region: @region] ->
-            {:error, "Primary region connection error"}
+      # Mock the AWS client to fail for primary bucket but succeed for first failover bucket
+      expect(AwsClientMock, :request, 2, fn operation, opts ->
+        op_bucket = operation.bucket
+        region = Keyword.get(opts, :region)
 
-          [region: "failover-region-1"] ->
-            {:ok, %{body: "content from failover region"}}
+        cond do
+          op_bucket == @bucket && region == @region ->
+            {:error, "Primary bucket connection error"}
+
+          op_bucket == "failover-bucket-1" && region == "failover-region-1" ->
+            {:ok, %{body: "content from failover bucket"}}
+
+          true ->
+            {:error, "Unexpected bucket or region"}
         end
       end)
 
       log =
         capture_log(fn ->
           result = S3.download(state)
-          assert {:ok, "content from failover region"} = result
+          assert {:ok, "content from failover bucket"} = result
         end)
 
       assert log =~ "bucket: \"#{@bucket}\""
       assert log =~ "key: \"#{@key}\""
       assert log =~ "Downloading object from S3"
       assert log =~ "region: \"#{@region}\""
-      assert log =~ "Failed to fetch from primary region, attempting failover regions"
+      assert log =~ "Failed to fetch from primary bucket, attempting failover buckets"
+      assert log =~ "bucket: \"failover-bucket-1\""
       assert log =~ "region: \"failover-region-1\""
-      assert log =~ "Trying failover region"
+      assert log =~ "Trying failover bucket"
       assert log =~ "Downloaded object from S3"
     end
 
-    test "returns error when primary and all failover regions fail" do
+    test "returns error when primary and all failover buckets fail" do
       state = %S3{
         bucket: @bucket,
         key: @key,
         region: @region,
-        failover_regions: @failover_regions
+        failover_buckets: @failover_buckets
       }
 
-      # Mock the AWS client to fail for all regions
-      expect(AwsClientMock, :request, 3, fn _op, opts ->
-        case opts do
-          [region: @region] ->
-            {:error, "Primary region connection error"}
+      # Mock the AWS client to fail for all buckets
+      expect(AwsClientMock, :request, 3, fn operation, opts ->
+        op_bucket = operation.bucket
+        region = Keyword.get(opts, :region)
 
-          [region: "failover-region-1"] ->
-            {:error, "First failover region connection error"}
+        cond do
+          op_bucket == @bucket && region == @region ->
+            {:error, "Primary bucket connection error"}
 
-          [region: "failover-region-2"] ->
-            {:error, "Second failover region connection error"}
+          op_bucket == "failover-bucket-1" && region == "failover-region-1" ->
+            {:error, "First failover bucket connection error"}
+
+          op_bucket == "failover-bucket-2" && region == "failover-region-2" ->
+            {:error, "Second failover bucket connection error"}
+
+          true ->
+            {:error, "Unexpected bucket or region"}
         end
       end)
 
@@ -143,59 +186,69 @@ defmodule RemotePersistentTerm.Fetcher.S3Test do
         capture_log(fn ->
           result = S3.download(state)
           assert {:error, message} = result
-          assert message =~ "All regions failed"
+          assert message =~ "All buckets failed"
         end)
 
       assert log =~ "bucket: \"#{@bucket}\""
       assert log =~ "key: \"#{@key}\""
       assert log =~ "Downloading object from S3"
       assert log =~ "region: \"#{@region}\""
-      assert log =~ "Failed to fetch from primary region, attempting failover regions"
+      assert log =~ "Failed to fetch from primary bucket, attempting failover buckets"
+      assert log =~ "bucket: \"failover-bucket-1\""
       assert log =~ "region: \"failover-region-1\""
-      assert log =~ "Trying failover region"
-      assert log =~ "reason: \"\\\"First failover region connection error\\\"\""
-      assert log =~ "Failed to fetch from failover region"
+      assert log =~ "Trying failover bucket"
+      assert log =~ "reason: \"\\\"First failover bucket connection error\\\"\""
+      assert log =~ "Failed to fetch from failover bucket"
+      assert log =~ "bucket: \"failover-bucket-2\""
       assert log =~ "region: \"failover-region-2\""
-      assert log =~ "reason: \"\\\"Second failover region connection error\\\"\""
+      assert log =~ "reason: \"\\\"Second failover bucket connection error\\\"\""
     end
 
-    test "tries second failover region when first failover region fails" do
+    test "tries second failover bucket when first failover bucket fails" do
       state = %S3{
         bucket: @bucket,
         key: @key,
         region: @region,
-        failover_regions: @failover_regions
+        failover_buckets: @failover_buckets
       }
 
-      # Mock the AWS client to fail for primary and first failover region but succeed for second failover region
-      expect(AwsClientMock, :request, 3, fn _op, opts ->
-        case opts do
-          [region: @region] ->
-            {:error, "Primary region connection error"}
+      # Mock the AWS client to fail for primary and first failover bucket but succeed for second failover bucket
+      expect(AwsClientMock, :request, 3, fn operation, opts ->
+        op_bucket = operation.bucket
+        region = Keyword.get(opts, :region)
 
-          [region: "failover-region-1"] ->
-            {:error, "First failover region connection error"}
+        cond do
+          op_bucket == @bucket && region == @region ->
+            {:error, "Primary bucket connection error"}
 
-          [region: "failover-region-2"] ->
-            {:ok, %{body: "content from second failover region"}}
+          op_bucket == "failover-bucket-1" && region == "failover-region-1" ->
+            {:error, "First failover bucket connection error"}
+
+          op_bucket == "failover-bucket-2" && region == "failover-region-2" ->
+            {:ok, %{body: "content from second failover bucket"}}
+
+          true ->
+            {:error, "Unexpected bucket or region"}
         end
       end)
 
       log =
         capture_log(fn ->
           result = S3.download(state)
-          assert {:ok, "content from second failover region"} = result
+          assert {:ok, "content from second failover bucket"} = result
         end)
 
       assert log =~ "bucket: \"#{@bucket}\""
       assert log =~ "key: \"#{@key}\""
       assert log =~ "Downloading object from S3"
       assert log =~ "region: \"#{@region}\""
-      assert log =~ "Failed to fetch from primary region, attempting failover regions"
+      assert log =~ "Failed to fetch from primary bucket, attempting failover buckets"
+      assert log =~ "bucket: \"failover-bucket-1\""
       assert log =~ "region: \"failover-region-1\""
-      assert log =~ "Trying failover region"
-      assert log =~ "reason: \"\\\"First failover region connection error\\\"\""
-      assert log =~ "Failed to fetch from failover region"
+      assert log =~ "Trying failover bucket"
+      assert log =~ "reason: \"\\\"First failover bucket connection error\\\"\""
+      assert log =~ "Failed to fetch from failover bucket"
+      assert log =~ "bucket: \"failover-bucket-2\""
       assert log =~ "region: \"failover-region-2\""
       assert log =~ "Downloaded object from S3"
     end
