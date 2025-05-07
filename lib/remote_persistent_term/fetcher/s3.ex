@@ -173,11 +173,10 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
   defp aws_client_request(
          op,
          %{
-           failover_buckets: failover_buckets
+           failover_buckets: [_|_] = failover_buckets
          } = state,
          opts
-       )
-       when is_list(failover_buckets) do
+       ) do
     with {:error, reason} <- perform_request(op, state.bucket, state.region, opts) do
       Logger.error(%{
         bucket: state.bucket,
