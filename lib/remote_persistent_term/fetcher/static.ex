@@ -22,10 +22,10 @@ defmodule RemotePersistentTerm.Fetcher.Static do
       def init(_), do: {:ok, []}
 
       @impl true
-      def current_version(_), do: {:ok, unquote(Keyword.get(opts, :version, "1"))}
+      def current_version(state), do: {:ok, unquote(Keyword.get(opts, :version, "1")), state}
 
       @impl true
-      def download(_), do: {:ok, unquote(Macro.escape(Keyword.fetch!(opts, :data)))}
+      def download(state), do: {:ok, unquote(Macro.escape(Keyword.fetch!(opts, :data)))}
 
       @impl true
       def previous_version(_), do: {:error, :no_previous_version}

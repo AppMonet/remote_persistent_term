@@ -99,7 +99,7 @@ defmodule RemotePersistentTerm.Fetcher.S3Test do
       log =
         capture_log(fn ->
           result = S3.current_version(state)
-          assert {:ok, "current-etag"} = result
+          assert {:ok, "current-etag", _updated_state} = result
         end)
 
       assert log =~ "bucket: \"#{@bucket}\""

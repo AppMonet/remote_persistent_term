@@ -66,8 +66,8 @@ defmodule RemotePersistentTerm.Fetcher.Http do
   end
 
   @impl true
-  def current_version(_state) do
-    {:ok, DateTime.utc_now() |> DateTime.to_string()}
+  def current_version(state) do
+    {:ok, DateTime.utc_now() |> DateTime.to_string(), state}
   end
 
   @impl true

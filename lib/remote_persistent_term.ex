@@ -281,9 +281,9 @@ defmodule RemotePersistentTerm do
       start_meta,
       fn ->
         {status, version} =
-          with {:ok, current_version} <- state.fetcher_mod.current_version(state.fetcher_state),
+          with {:ok, current_version, updated_fetcher_state} <- state.fetcher_mod.current_version(state.fetcher_state),
                true <- state.current_version != current_version,
-               :ok <- download_and_store_term(state, deserialize_fun, put_fun) do
+               :ok <- download_and_store_term(%{state | fetcher_state: updated_fetcher_state}, deserialize_fun, put_fun) do
             {:updated, current_version}
           else
             false ->

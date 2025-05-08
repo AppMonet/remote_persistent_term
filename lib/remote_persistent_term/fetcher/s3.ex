@@ -15,9 +15,10 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
           key: String.t(),
           region: region,
           failover_buckets: [failover_bucket] | nil,
-          version_id: String.t() | nil
+          version_id: String.t() | nil,
+          versions: [map()] | nil
         }
-  defstruct [:bucket, :key, :region, :failover_buckets, :version_id]
+  defstruct [:bucket, :key, :region, :failover_buckets, :version_id, :versions]
 
   @failover_bucket_schema [
     bucket: [
@@ -92,7 +93,7 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
         message: "Found latest version of object"
       )
 
-      {:ok, etag}
+      {:ok, etag, %{state | versions: versions}}
     else
       {:error, {:unexpected_response, %{body: reason}}} ->
         {:error, reason}
@@ -176,9 +177,11 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
       version_id: state.version_id
     )
 
-    with {:ok, versions} <- list_object_versions(state),
+    versions = if state.versions, do: {:ok, state.versions}, else: list_object_versions(state)
+
+    with {:ok, versions} <- versions,
          {:ok, previous_version} <- find_previous_version(versions, state.version_id) do
-      {:ok, %{state | version_id: previous_version.version_id}}
+      {:ok, %{state | version_id: previous_version.version_id, versions: versions}}
     else
       {:error, reason} ->
         Logger.error(%{
@@ -194,13 +197,7 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
 
   defp find_previous_version(versions, current_version_id) do
     versions
-    |> Enum.sort_by(
-      fn version ->
-        {:ok, datetime, _} = DateTime.from_iso8601(version.last_modified)
-        datetime
-      end,
-      {:desc, DateTime}
-    )
+    |> Enum.sort_by(& &1.last_modified, :desc)
     |> Enum.find(fn version ->
       version.version_id != current_version_id
     end)
