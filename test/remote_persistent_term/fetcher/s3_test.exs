@@ -253,4 +253,58 @@ defmodule RemotePersistentTerm.Fetcher.S3Test do
       assert log =~ "Downloaded object from S3"
     end
   end
+
+  describe "previous_version/1" do
+    test "finds the correct previous version when given a current version ID" do
+      versions = [
+        %{
+          version_id: "v3",
+          last_modified: "2025-05-08T09:58:38.000Z",
+          is_latest: "true"
+        },
+        %{
+          version_id: "v2",
+          last_modified: "2025-04-02T10:21:18.000Z",
+          is_latest: "false"
+        },
+        %{
+          version_id: "v1",
+          last_modified: "2025-04-02T09:10:37.000Z",
+          is_latest: "false"
+        }
+      ]
+
+      expect(AwsClientMock, :request, fn operation, opts ->
+        assert operation.bucket == @bucket
+        assert operation.resource == "versions"
+        assert operation.params == [prefix: @key]
+        assert opts == [region: @region]
+        {:ok, %{body: %{versions: versions}}}
+      end)
+
+      state = %S3{bucket: @bucket, key: @key, region: @region, version_id: "v3"}
+      assert {:ok, %{version_id: "v2"}} = S3.previous_version(state)
+    end
+
+    test "returns error when there are no previous versions" do
+      versions = [
+        %{
+          version_id: "v1",
+          last_modified: "2025-04-02T09:10:37.000Z",
+          is_latest: "true"
+        }
+      ]
+
+      expect(AwsClientMock, :request, fn operation, opts ->
+        assert operation.bucket == @bucket
+        assert operation.resource == "versions"
+        assert operation.params == [prefix: @key]
+        assert opts == [region: @region]
+        {:ok, %{body: %{versions: versions}}}
+      end)
+
+      state = %S3{bucket: @bucket, key: @key, region: @region, version_id: "v1"}
+      assert {:error, :no_previous_version} = S3.previous_version(state)
+    end
+  end
 end

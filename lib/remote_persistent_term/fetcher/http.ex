@@ -81,6 +81,9 @@ defmodule RemotePersistentTerm.Fetcher.Http do
     end
   end
 
+  @impl true
+  def previous_version(_state), do: {:error, :no_previous_version}
+
   defp response_status(url, status) do
     if status < 300 do
       Logger.info("successfully downloaded remote term from #{url} with status #{status}")

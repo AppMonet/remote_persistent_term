@@ -26,4 +26,10 @@ defmodule RemotePersistentTerm.Fetcher do
   Download the term from the remote source.
   """
   @callback download(state()) :: {:ok, term()} | {:error, term()}
+
+  @doc """
+  Get the previous version of the remote term.
+  Returns a new state that can be used to fetch the previous version.
+  """
+  @callback previous_version(state()) :: {:ok, state()} | {:error, term()}
 end

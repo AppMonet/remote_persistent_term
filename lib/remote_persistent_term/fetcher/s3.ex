@@ -14,9 +14,10 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
           bucket: bucket,
           key: String.t(),
           region: region,
-          failover_buckets: [failover_bucket] | nil
+          failover_buckets: [failover_bucket] | nil,
+          version_id: String.t() | nil
         }
-  defstruct [:bucket, :key, :region, :failover_buckets]
+  defstruct [:bucket, :key, :region, :failover_buckets, :version_id]
 
   @failover_bucket_schema [
     bucket: [
@@ -136,9 +137,9 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
   defp list_object_versions(state) do
     res =
       aws_client_request(
-        &ExAws.S3.get_bucket_object_versions/2,
+        :get_bucket_object_versions,
         state,
-        prefix: state.key
+        [[prefix: state.key]]
       )
 
     with {:ok, %{body: %{versions: versions}}} <- res do
@@ -147,7 +148,8 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
   end
 
   defp get_object(state) do
-    aws_client_request(&ExAws.S3.get_object/2, state, state.key)
+    # aws_client_request(&ExAws.S3.get_object/2, state, state.key)
+    aws_client_request(:get_object, state, [state.key, [version_id: state.version_id]])
   end
 
   defp find_latest([_ | _] = contents) do
@@ -166,6 +168,51 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
 
   defp find_latest(_), do: {:error, :not_found}
 
+  @impl true
+  def previous_version(state) do
+    Logger.info(
+      bucket: state.bucket,
+      key: state.key,
+      message: "About to fetch previous version of object",
+      version_id: state.version_id
+    )
+
+    with {:ok, versions} <- list_object_versions(state),
+         {:ok, previous_version} <- find_previous_version(versions, state.version_id) do
+      {:ok, %{state | version_id: previous_version.version_id}}
+    else
+      {:error, reason} ->
+        Logger.error(%{
+          bucket: state.bucket,
+          key: state.key,
+          reason: inspect(reason),
+          message: "Failed to get previous version of object"
+        })
+
+        {:error, reason}
+    end
+  end
+
+  defp find_previous_version(versions, current_version_id) do
+    versions
+    |> Enum.sort_by(
+      fn version ->
+        {:ok, datetime, _} = DateTime.from_iso8601(version.last_modified)
+        datetime
+      end,
+      {:desc, DateTime}
+    )
+    |> Enum.find(fn version ->
+      version.version_id != current_version_id
+    end)
+    |> case do
+      nil -> {:error, :no_previous_version}
+      version -> {:ok, version}
+    end
+  end
+
+  defp aws_client_request(op, state, opts \\ [])
+
   defp aws_client_request(op, %{failover_buckets: nil} = state, opts) do
     perform_request(op, state.bucket, state.region, opts)
   end
@@ -173,7 +220,7 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
   defp aws_client_request(
          op,
          %{
-           failover_buckets: [_|_] = failover_buckets
+           failover_buckets: [_ | _] = failover_buckets
          } = state,
          opts
        ) do
@@ -222,8 +269,8 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
     end
   end
 
-  defp perform_request(op, bucket, region, opts) do
-    op.(bucket, opts)
+  defp perform_request(func, bucket, region, opts) do
+    apply(ExAws.S3, func, [bucket | opts])
     |> client().request(region: region)
   end
 

@@ -69,6 +69,15 @@ defmodule RemotePersistentTerm do
 
       Currently only supports gzip (0x1F, 0x8B).
       """
+    ],
+    version_fallback?: [
+      type: :boolean,
+      required: false,
+      default: false,
+      doc: """
+      If true, when deserialization fails, the system will attempt to use previous versions \
+      of the term until a valid version is found or all versions are exhausted.
+      """
     ]
   ]
 
@@ -77,7 +86,8 @@ defmodule RemotePersistentTerm do
           fetcher_state: term(),
           refresh_interval: pos_integer(),
           current_version: String.t(),
-          auto_decompress?: boolean()
+          auto_decompress?: boolean(),
+          version_fallback?: boolean()
         }
   defstruct [
     :fetcher_mod,
@@ -85,7 +95,8 @@ defmodule RemotePersistentTerm do
     :refresh_interval,
     :current_version,
     :name,
-    :auto_decompress?
+    :auto_decompress?,
+    :version_fallback?
   ]
 
   @doc """
@@ -138,7 +149,8 @@ defmodule RemotePersistentTerm do
             fetcher_state: fetcher_state,
             refresh_interval: opts[:refresh_interval],
             name: name(opts),
-            auto_decompress?: opts[:auto_decompress?]
+            auto_decompress?: opts[:auto_decompress?],
+            version_fallback?: opts[:version_fallback?]
           }
 
           if opts[:lazy_init?] do
@@ -307,9 +319,31 @@ defmodule RemotePersistentTerm do
 
   defp download_and_store_term(state, deserialize_fun, put_fun) do
     with {:ok, term} <- state.fetcher_mod.download(state.fetcher_state),
-         {:ok, decompressed} <- maybe_decompress(state, term),
-         {:ok, deserialized} <- deserialize_fun.(decompressed) do
-      put_fun.(deserialized)
+         {:ok, decompressed} <- maybe_decompress(state, term) do
+      try_deserialize_and_store(state, decompressed, deserialize_fun, put_fun)
+    end
+  end
+
+  defp try_deserialize_and_store(state, term, deserialize_fun, put_fun) do
+    case deserialize_fun.(term) do
+      {:ok, deserialized} ->
+        put_fun.(deserialized)
+
+      {:error, _reason} = error when state.version_fallback? ->
+        case state.fetcher_mod.previous_version(state.fetcher_state) do
+          {:ok, previous_state} ->
+            download_and_store_term(
+              %{state | fetcher_state: previous_state},
+              deserialize_fun,
+              put_fun
+            )
+
+          {:error, _} ->
+            error
+        end
+
+      error ->
+        error
     end
   end
 

@@ -1,6 +1,6 @@
 defmodule RemotePersistentTerm.Fetcher.Static do
   @moduledoc """
-  A macro to help define a valid `RemotePersistentTerm.Fetcher` which 
+  A macro to help define a valid `RemotePersistentTerm.Fetcher` which
   always returns some hardcoded static data.
 
   Mostly intended for testing purposes.
@@ -26,6 +26,9 @@ defmodule RemotePersistentTerm.Fetcher.Static do
 
       @impl true
       def download(_), do: {:ok, unquote(Macro.escape(Keyword.fetch!(opts, :data)))}
+
+      @impl true
+      def previous_version(_), do: {:error, :no_previous_version}
     end
   end
 end
