@@ -20,10 +20,16 @@ defmodule RemotePersistentTerm.Fetcher do
   Check the current version of the remote term. Used to avoid downloading the
   same term multiple times.
   """
-  @callback current_version(state()) :: {:ok, version()} | {:error, term()}
+  @callback current_version(state()) :: {:ok, version(), state()} | {:error, term()}
 
   @doc """
   Download the term from the remote source.
   """
   @callback download(state()) :: {:ok, term()} | {:error, term()}
+
+  @doc """
+  Get the previous version of the remote term.
+  Returns a new state that can be used to fetch the previous version.
+  """
+  @callback previous_version(state()) :: {:ok, state()} | {:error, term()}
 end
