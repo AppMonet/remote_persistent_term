@@ -148,7 +148,6 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
   end
 
   defp get_object(state) do
-    # aws_client_request(&ExAws.S3.get_object/2, state, state.key)
     aws_client_request(:get_object, state, [state.key, [version_id: state.version_id]])
   end
 
