@@ -331,7 +331,10 @@ defmodule RemotePersistentTerm do
         put_fun.(deserialized)
 
       {:error, _reason} = error when state.version_fallback? ->
-        Logger.error("#{state.name} - failed to deserialize remote term, falling back to previous version")
+        Logger.error(
+          "#{state.name} - failed to deserialize remote term, falling back to previous version"
+        )
+
         case state.fetcher_mod.previous_version(state.fetcher_state) do
           {:ok, previous_state} ->
             download_and_store_term(
