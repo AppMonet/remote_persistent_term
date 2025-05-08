@@ -210,8 +210,6 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
     end
   end
 
-  defp aws_client_request(op, state, opts \\ [])
-
   defp aws_client_request(op, %{failover_buckets: nil} = state, opts) do
     perform_request(op, state.bucket, state.region, opts)
   end
