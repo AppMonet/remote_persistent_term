@@ -76,7 +76,8 @@ defmodule RemotePersistentTerm do
       default: false,
       doc: """
       If true, when deserialization fails, the system will attempt to use previous versions \
-      of the term until a valid version is found or all versions are exhausted.
+      of the term until a valid version is found or all versions are exhausted. \
+      Only currently supported by the S3 fetcher.
       """
     ]
   ]
@@ -330,6 +331,7 @@ defmodule RemotePersistentTerm do
         put_fun.(deserialized)
 
       {:error, _reason} = error when state.version_fallback? ->
+        Logger.error("#{state.name} - failed to deserialize remote term, falling back to previous version")
         case state.fetcher_mod.previous_version(state.fetcher_state) do
           {:ok, previous_state} ->
             download_and_store_term(
