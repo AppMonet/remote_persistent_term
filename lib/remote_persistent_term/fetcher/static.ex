@@ -28,7 +28,7 @@ defmodule RemotePersistentTerm.Fetcher.Static do
       def download(state), do: {:ok, unquote(Macro.escape(Keyword.fetch!(opts, :data)))}
 
       @impl true
-      def previous_version(_), do: {:error, :no_previous_version}
+      def previous_version(_), do: {:error, :not_supported}
     end
   end
 end

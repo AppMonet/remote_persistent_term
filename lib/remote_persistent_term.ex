@@ -281,9 +281,15 @@ defmodule RemotePersistentTerm do
       start_meta,
       fn ->
         {status, version} =
-          with {:ok, current_version, updated_fetcher_state} <- state.fetcher_mod.current_version(state.fetcher_state),
+          with {:ok, current_version, updated_fetcher_state} <-
+                 state.fetcher_mod.current_version(state.fetcher_state),
                true <- state.current_version != current_version,
-               :ok <- download_and_store_term(%{state | fetcher_state: updated_fetcher_state}, deserialize_fun, put_fun) do
+               :ok <-
+                 download_and_store_term(
+                   %{state | fetcher_state: updated_fetcher_state},
+                   deserialize_fun,
+                   put_fun
+                 ) do
             {:updated, current_version}
           else
             false ->
@@ -330,24 +336,28 @@ defmodule RemotePersistentTerm do
       {:ok, deserialized} ->
         put_fun.(deserialized)
 
-      {:error, _reason} = error when state.version_fallback? ->
+      {:error, _reason} when state.version_fallback? ->
         Logger.error(
           "#{state.name} - failed to deserialize remote term, falling back to previous version"
         )
 
-        case state.fetcher_mod.previous_version(state.fetcher_state) do
-          {:ok, previous_state} ->
-            download_and_store_term(
-              %{state | fetcher_state: previous_state},
-              deserialize_fun,
-              put_fun
-            )
-
-          {:error, _} ->
-            error
-        end
+        try_previous_version(state, deserialize_fun, put_fun)
 
       error ->
+        error
+    end
+  end
+
+  defp try_previous_version(state, deserialize_fun, put_fun) do
+    case state.fetcher_mod.previous_version(state.fetcher_state) do
+      {:ok, previous_state} ->
+        download_and_store_term(
+          %{state | fetcher_state: previous_state},
+          deserialize_fun,
+          put_fun
+        )
+
+      {:error, _} = error ->
         error
     end
   end

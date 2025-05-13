@@ -82,7 +82,7 @@ defmodule RemotePersistentTerm.Fetcher.Http do
   end
 
   @impl true
-  def previous_version(_state), do: {:error, :no_previous_version}
+  def previous_version(_state), do: {:error, :not_supported}
 
   defp response_status(url, status) do
     if status < 300 do
