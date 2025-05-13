@@ -66,8 +66,8 @@ defmodule RemotePersistentTerm.Fetcher.Http do
   end
 
   @impl true
-  def current_version(_state) do
-    {:ok, DateTime.utc_now() |> DateTime.to_string()}
+  def current_version(state) do
+    {:ok, DateTime.utc_now() |> DateTime.to_string(), state}
   end
 
   @impl true
@@ -80,6 +80,9 @@ defmodule RemotePersistentTerm.Fetcher.Http do
       {:ok, resp.body}
     end
   end
+
+  @impl true
+  def previous_version(_state), do: {:error, :not_supported}
 
   defp response_status(url, status) do
     if status < 300 do
