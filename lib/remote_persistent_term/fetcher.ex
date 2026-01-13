@@ -10,6 +10,8 @@ defmodule RemotePersistentTerm.Fetcher do
   @type state :: term()
   @type opts :: Keyword.t()
   @type version :: String.t()
+  @type download_if_changed_result ::
+          {:ok, term(), version()} | {:not_modified, version() | nil} | {:error, term()}
 
   @doc """
   Initialize the implementation specific state of the Fetcher.
@@ -26,4 +28,12 @@ defmodule RemotePersistentTerm.Fetcher do
   Download the term from the remote source.
   """
   @callback download(state()) :: {:ok, term()} | {:error, term()}
+
+  @doc """
+  Optionally download the term only if it has changed. When implemented, it should
+  return `{:not_modified, current_version}` for an unchanged term or `{:ok, term, new_version}`.
+  """
+  @callback download_if_changed(state(), version() | nil) :: download_if_changed_result
+
+  @optional_callbacks download_if_changed: 2
 end
