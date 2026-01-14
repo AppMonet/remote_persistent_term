@@ -268,21 +268,43 @@ defmodule RemotePersistentTerm do
       start_meta,
       fn ->
         {status, version} =
-          with {:ok, current_version} <- state.fetcher_mod.current_version(state.fetcher_state),
-               true <- state.current_version != current_version,
-               :ok <- download_and_store_term(state, deserialize_fun, put_fun) do
-            {:updated, current_version}
+          if function_exported?(state.fetcher_mod, :download_if_changed, 2) do
+            case state.fetcher_mod.download_if_changed(
+                   state.fetcher_state,
+                   state.current_version
+                 ) do
+              {:ok, term, new_version} ->
+                case store_term(state, deserialize_fun, put_fun, term) do
+                  :ok ->
+                    {:updated, new_version}
+
+                  {:error, reason} ->
+                    log_update_error(state.name, reason)
+                    {:not_updated, state.current_version}
+                end
+
+              {:not_modified, version} ->
+                Logger.info("#{state.name} - up to date")
+                {:not_updated, version || state.current_version}
+
+              {:error, reason} ->
+                log_update_error(state.name, reason)
+                {:not_updated, state.current_version}
+            end
           else
-            false ->
-              Logger.info("#{state.name} - up to date")
-              {:not_updated, state.current_version}
+            with {:ok, current_version} <- state.fetcher_mod.current_version(state.fetcher_state),
+                 true <- state.current_version != current_version,
+                 :ok <- download_and_store_term(state, deserialize_fun, put_fun) do
+              {:updated, current_version}
+            else
+              false ->
+                Logger.info("#{state.name} - up to date")
+                {:not_updated, state.current_version}
 
-            {:error, reason} ->
-              Logger.error(
-                "#{state.name} - failed to update remote term, reason: #{inspect(reason)}"
-              )
-
-              {:not_updated, state.current_version}
+              {:error, reason} ->
+                log_update_error(state.name, reason)
+                {:not_updated, state.current_version}
+            end
           end
 
         {version, Map.put(start_meta, :status, status)}
@@ -305,9 +327,18 @@ defmodule RemotePersistentTerm do
   @doc false
   def validate_options(opts), do: NimbleOptions.validate(opts, @opts_schema)
 
+  defp log_update_error(name, reason) do
+    Logger.error("#{name} - failed to update remote term, reason: #{inspect(reason)}")
+  end
+
   defp download_and_store_term(state, deserialize_fun, put_fun) do
-    with {:ok, term} <- state.fetcher_mod.download(state.fetcher_state),
-         {:ok, decompressed} <- maybe_decompress(state, term),
+    with {:ok, term} <- state.fetcher_mod.download(state.fetcher_state) do
+      store_term(state, deserialize_fun, put_fun, term)
+    end
+  end
+
+  defp store_term(state, deserialize_fun, put_fun, term) do
+    with {:ok, decompressed} <- maybe_decompress(state, term),
          {:ok, deserialized} <- deserialize_fun.(decompressed) do
       put_fun.(deserialized)
     end

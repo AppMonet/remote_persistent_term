@@ -12,8 +12,6 @@ defmodule RemotePersistentTerm.Fetcher.S3Test do
     [bucket: "failover-bucket-1", region: "failover-region-1"],
     [bucket: "failover-bucket-2", region: "failover-region-2"]
   ]
-  @version "F76V.weh4uOlU15f7a2OLHPgCLXkDpm4"
-
   test "Unknown error returns an error for current_version/1" do
     expect(AwsClientMock, :request, fn _op, _opts ->
       {:error, :unknown_error}
@@ -84,11 +82,9 @@ defmodule RemotePersistentTerm.Fetcher.S3Test do
           op_bucket == "failover-bucket-1" && region == "failover-region-1" ->
             {:ok,
              %{
-               body: %{
-                 versions: [
-                   %{version_id: @version, etag: "current-etag", is_latest: "true"}
-                 ]
-               }
+               headers: [
+                 {"etag", "\"current-etag\""}
+               ]
              }}
 
           true ->
@@ -251,6 +247,32 @@ defmodule RemotePersistentTerm.Fetcher.S3Test do
       assert log =~ "bucket: \"failover-bucket-2\""
       assert log =~ "region: \"failover-region-2\""
       assert log =~ "Downloaded object from S3"
+    end
+  end
+
+  describe "download_if_changed/2" do
+    test "returns not_modified on 304 and sends if-none-match" do
+      state = %S3{bucket: @bucket, key: @key, region: @region}
+
+      expect(AwsClientMock, :request, fn operation, _opts ->
+        assert operation.headers["if-none-match"] == "\"current-etag\""
+        {:error, {:http_error, 304, %{}}}
+      end)
+
+      assert {:not_modified, "current-etag"} =
+               S3.download_if_changed(state, "current-etag")
+    end
+
+    test "returns body and version on 200" do
+      state = %S3{bucket: @bucket, key: @key, region: @region}
+
+      expect(AwsClientMock, :request, fn operation, _opts ->
+        assert operation.headers["if-none-match"] == "\"old-etag\""
+        {:ok, %{body: "new-content", headers: [{"etag", "\"new-etag\""}]}}
+      end)
+
+      assert {:ok, "new-content", "new-etag"} =
+               S3.download_if_changed(state, "old-etag")
     end
   end
 end
