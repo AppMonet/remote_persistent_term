@@ -89,6 +89,8 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
   """
   @impl true
   def init(opts) do
+    ensure_http_client()
+
     with {:ok, valid_opts} <- NimbleOptions.validate(opts, @opts_schema) do
       {:ok,
        %__MODULE__{
@@ -237,6 +239,16 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
 
   defp failover_on_error?({:http_error, 304, _}), do: false
   defp failover_on_error?(_reason), do: true
+
+  defp ensure_http_client do
+    case Application.get_env(:ex_aws, :http_client) do
+      nil ->
+        Application.put_env(:ex_aws, :http_client, RemotePersistentTerm.Fetcher.S3.HttpClient)
+
+      _ ->
+        :ok
+    end
+  end
 
   defp aws_client_request(op, state, opts) do
     aws_client_request(op, state, opts, fn _ -> true end)
