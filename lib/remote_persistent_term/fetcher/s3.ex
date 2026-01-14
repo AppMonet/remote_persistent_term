@@ -209,9 +209,11 @@ defmodule RemotePersistentTerm.Fetcher.S3 do
   end
 
   defp header_value(headers, name) do
+    downcased = String.downcase(name)
+
     Enum.find_value(headers, fn
       {key, value} when is_binary(key) and is_binary(value) ->
-        if key == name, do: value, else: nil
+        if String.downcase(key) == downcased, do: value, else: nil
 
       _ ->
         nil
